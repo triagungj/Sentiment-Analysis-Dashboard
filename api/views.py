@@ -5,21 +5,18 @@ from rest_framework import serializers
 from transformers import BertTokenizer, BertForSequenceClassification
 from torch.nn.functional import softmax
 import torch
-import pickle
-import os
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
 from .models import NewsSource
 
 # ==== Load model dan tokenizer ====
-MODEL_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'model')
-tokenizer = BertTokenizer.from_pretrained(MODEL_PATH)
-model = BertForSequenceClassification.from_pretrained(MODEL_PATH)
+MODEL_NAME = "triagungj/indobert-large-p2-stock-news"
+tokenizer = BertTokenizer.from_pretrained(MODEL_NAME)
+model = BertForSequenceClassification.from_pretrained(MODEL_NAME)
 model.eval()
 
-# Load label mapping
-with open(os.path.join(MODEL_PATH, "label_mappings.pkl"), "rb") as f:
-    w2i, i2w = pickle.load(f)
+# Define label mapping (update as needed based on model config)
+i2w = {0: "positive", 1: "neutral", 2: "negative"}
 
 class SentimentRequestSerializer(serializers.Serializer):
     text = serializers.CharField()
