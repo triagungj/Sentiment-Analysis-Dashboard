@@ -1,0 +1,47 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pyc
+*.pyo
+*.pyd
+*.env
+.env
+venv/
+ENV/
+env/
+
+# Django
+*.log
+*.pot
+*.pyc
+*.pyo
+*.sqlite3
+*.db
+local_settings.py
+settings_local.py
+
+# VS Code
+.vscode/
+
+# macOS
+.DS_Store
+
+# Jupyter Notebooks
+.ipynb_checkpoints
+
+# Model files
+*.safetensors
+*.pkl
+
+# Static files
+staticfiles/
+
+# Other
+*.swp
+*.bak
+*.tmp
+
+# Node modules
+node_modules/
