@@ -4,16 +4,18 @@ import torch
 
 MODEL_NAME = "triagungj/indobert-large-p2-stock-news"
 
-# Load model/tokenizer once (avoid reloading each call)
-tokenizer = BertTokenizer.from_pretrained(MODEL_NAME)
-model = BertForSequenceClassification.from_pretrained(MODEL_NAME)
-model.eval()
-
 # Label mapping
 i2w = {0: "positive", 1: "neutral", 2: "negative"}
 
 def predict_sentiment(text: str):
     """Run sentiment prediction for given text and return label + confidence."""
+    # Lazy-load model and tokenizer
+    global tokenizer, model
+    if 'tokenizer' not in globals():
+        tokenizer = BertTokenizer.from_pretrained(MODEL_NAME)
+    if 'model' not in globals():
+        model = BertForSequenceClassification.from_pretrained(MODEL_NAME)
+        model.eval()
     inputs = tokenizer(
         text,
         return_tensors="pt",
