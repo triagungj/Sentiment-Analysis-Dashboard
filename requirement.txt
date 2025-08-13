@@ -6,6 +6,7 @@ djangorestframework==3.16.1
 drf-yasg==1.21.10
 filelock==3.18.0
 fsspec==2025.7.0
+Gunicorn==22.0.0
 hf-xet==1.1.7
 huggingface-hub==0.34.4
 idna==3.10
