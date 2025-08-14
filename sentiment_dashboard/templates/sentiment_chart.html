@@ -113,7 +113,7 @@
     </style>
   </head>
   <body>
-    <h2>Sentiment Statistics Per Month</h2>
+    <h2>Sentiment Statistics</h2>
     <div class="month-filter" id="monthFilter"></div>
 
     <div class="chart-container">
@@ -154,16 +154,6 @@
           <circle cx="22" cy="22" r="8" fill="#e5e5e5"/>
         </svg>`
         );
-      function getNewsImage(n) {
-        return (
-          n.image_url ||
-          n.thumbnail ||
-          n.image ||
-          n.cover ||
-          n.thumbnail_url ||
-          null
-        );
-      }
 
       // --- helpers ---
       function sortByDateAsc(arr) {
@@ -460,7 +450,7 @@
           const date = n.published_at || n.created_at || n.date || "";
           const source = n.source?.name || n.source || "";
           const sentiment = n.sentiment || "";
-          const imgSrc = getNewsImage(n) || PLACEHOLDER_SVG;
+          const imgSrc = n.image_link || PLACEHOLDER_SVG;
 
           const item = document.createElement("div");
           item.className = "news-item";
@@ -641,24 +631,8 @@
         .then((response) => response.json())
         .then(async (data) => {
           allData = data.map((item) => ({ ...item, date: item.date }));
-          months = [...new Set(data.map((item) => item.date.slice(0, 7)))];
-          renderMonthButtons();
 
-          // Default: All view (weekly chart + newest news)
-          const weekData = [];
-          let lastWeekKey = null;
-          const sortedAll = sortByDateAsc(allData);
-          sortedAll.forEach((item) => {
-            const d = new Date(item.date);
-            const key = `${d.getFullYear()}-M${d.getMonth() + 1}-W${Math.ceil(
-              d.getDate() / 7
-            )}`;
-            if (key !== lastWeekKey) {
-              weekData.push(item);
-              lastWeekKey = key;
-            }
-          });
-          renderChart(weekData, "All Months (Weekly)");
+          renderChart(allData, "All Months");
           document.getElementById("newsTitle").textContent = "Latest News";
           await fetchLatestNews();
         });
