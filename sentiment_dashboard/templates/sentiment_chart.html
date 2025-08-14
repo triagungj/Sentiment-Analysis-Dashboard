@@ -3,6 +3,7 @@
   <head>
     <title>Sentiment Chart</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
     <style>
       .month-filter {
         margin-bottom: 20px;
@@ -21,11 +22,10 @@
         color: #fff;
         border-color: #007bff;
       }
-
       .chart-container {
         overflow-x: auto;
         width: 100%;
-        min-height: 50vh;
+        min-height: 70vh; /* from your latest */
       }
       #sentimentChart {
         height: 400px;
@@ -126,11 +126,14 @@
       let allData = [];
       let months = [];
 
-      // pagination state
-      let currentMonth = null; // null means "All"
+      // Pagination & fetch safety
+      let currentMonth = null; // null = "All"
       let nextPageUrl = null;
+      let isLoading = false;
+      const visitedNext = new Set();
+      let inFlight = null; // AbortController
 
-      // Tiny inline SVG placeholder (light gray)
+      // Placeholder image
       const PLACEHOLDER_SVG =
         "data:image/svg+xml;utf8," +
         encodeURIComponent(
@@ -141,12 +144,29 @@
         </svg>`
         );
 
-      function renderChart(filteredData, monthLabel) {
-        const labels = filteredData.map((item) => item.date);
-        const positive = filteredData.map((item) => item.positive);
-        const neutral = filteredData.map((item) => item.neutral);
-        const negative = filteredData.map((item) => item.negative);
+      // --- utilities ---
+      function sortByDateAsc(arr) {
+        return arr.slice().sort((a, b) => new Date(a.date) - new Date(b.date));
+      }
+      function uniqueMonthsAsc(arr) {
+        const set = new Set(arr.map((i) => i.date.slice(0, 7)));
+        return Array.from(set).sort(); // 2024-02 < 2024-10 < 2025-01
+      }
+      function uniqueMonthsDesc(arr) {
+        return uniqueMonthsAsc(arr).reverse();
+      }
 
+      // --- chart ---
+      function renderChart(filteredData, monthLabel) {
+        // REVERSED: ensure chronological order (newest on the right)
+        const sorted = sortByDateAsc(filteredData);
+
+        const labels = sorted.map((item) => item.date);
+        const positive = sorted.map((item) => item.positive);
+        const neutral = sorted.map((item) => item.neutral);
+        const negative = sorted.map((item) => item.negative);
+
+        // Set chart width dynamically based on data size
         const chartCanvas = document.getElementById("sentimentChart");
         chartCanvas.width = Math.max(1600, labels.length * 20);
 
@@ -155,13 +175,13 @@
         chartInstance = new Chart(ctx, {
           type: "line",
           data: {
-            labels,
+            labels: labels,
             datasets: [
               {
                 label: "Positive",
                 data: positive,
                 borderColor: "#0072B2",
-                backgroundColor: "rgba(0,114,178,0.2)",
+                backgroundColor: "rgba(0, 114, 178, 0.2)",
                 fill: false,
                 tension: 0.3,
                 pointRadius: 2,
@@ -170,7 +190,7 @@
                 label: "Neutral",
                 data: neutral,
                 borderColor: "#E69F00",
-                backgroundColor: "rgba(230,159,0,0.2)",
+                backgroundColor: "rgba(230, 159, 0, 0.2)",
                 fill: false,
                 tension: 0.3,
                 pointRadius: 2,
@@ -179,7 +199,7 @@
                 label: "Negative",
                 data: negative,
                 borderColor: "#009E73",
-                backgroundColor: "rgba(0,158,115,0.2)",
+                backgroundColor: "rgba(0, 158, 115, 0.2)",
                 fill: false,
                 tension: 0.3,
                 pointRadius: 2,
@@ -209,8 +229,9 @@
               },
               zoom: {
                 pan: { enabled: true, mode: "x" },
+                // Require Ctrl for wheel zoom to avoid accidental zoom on horizontal scroll
                 zoom: {
-                  wheel: { enabled: true },
+                  wheel: { enabled: true, modifierKey: "ctrl" },
                   pinch: { enabled: true },
                   mode: "x",
                 },
@@ -240,7 +261,7 @@
           },
         });
 
-        // Focus last month on initial render for non-empty data (except for the weekly "All" view)
+        // Focus latest month on initial render (except weekly-all)
         if (labels.length > 0 && monthLabel !== "All Months (Weekly)") {
           const latestMonth = labels[labels.length - 1].slice(0, 7);
           const startIdx = labels.findIndex(
@@ -252,15 +273,25 @@
         }
       }
 
+      // --- news list rendering ---
       function renderNewsList(items, append = false) {
         const list = document.getElementById("newsList");
         const loadMoreBtn = document.getElementById("loadMoreBtn");
+
         if (!append) list.innerHTML = "";
 
-        if (!items || items.length === 0) {
-          if (!append)
-            list.innerHTML = '<div class="empty">No news found.</div>';
+        // Handle empty page for "load more"
+        if (append && (!items || items.length === 0)) {
           loadMoreBtn.style.display = "none";
+          loadMoreBtn.disabled = true;
+          loadMoreBtn.textContent = "No more";
+          return;
+        }
+        if (!items || items.length === 0) {
+          list.innerHTML = '<div class="empty">No news found.</div>';
+          loadMoreBtn.style.display = "none";
+          loadMoreBtn.disabled = true;
+          loadMoreBtn.textContent = "No more";
           return;
         }
 
@@ -275,74 +306,111 @@
 
           const item = document.createElement("div");
           item.className = "news-item";
-
-          const left = document.createElement("div");
-          left.className = "thumb";
-          left.innerHTML = `<img loading="lazy" src="${imgSrc}" alt="" onerror="this.onerror=null;this.src='${PLACEHOLDER_SVG}';">`;
-
-          const right = document.createElement("div");
-          right.className = "news-content";
-          right.innerHTML = `
-            <h4><a href="${url}" target="_blank" rel="noopener noreferrer">${title}</a></h4>
-            <div class="news-meta">
-              <span>${date ? new Date(date).toLocaleString() : ""}</span>
-              ${source ? ` • <span>${source}</span>` : ""}
-              ${sentiment ? ` <span class="badge">${sentiment}</span>` : ""}
+          item.innerHTML = `
+            <div class="thumb">
+              <img loading="lazy" src="${imgSrc}" alt=""
+                   onerror="this.onerror=null;this.src='${PLACEHOLDER_SVG}';">
+            </div>
+            <div class="news-content">
+              <h4><a href="${url}" target="_blank" rel="noopener noreferrer">${title}</a></h4>
+              <div class="news-meta">
+                <span>${date ? new Date(date).toLocaleString() : ""}</span>
+                ${source ? ` • <span>${source}</span>` : ""}
+                ${sentiment ? ` <span class="badge">${sentiment}</span>` : ""}
+              </div>
             </div>
           `;
-
-          item.appendChild(left);
-          item.appendChild(right);
           fragment.appendChild(item);
         });
         list.appendChild(fragment);
 
-        document.getElementById("loadMoreBtn").style.display = nextPageUrl
-          ? "inline-block"
-          : "none";
+        const hasNext = Boolean(nextPageUrl);
+        loadMoreBtn.style.display = hasNext ? "inline-block" : "none";
+        loadMoreBtn.disabled = !hasNext;
+        loadMoreBtn.textContent = hasNext ? "Load more" : "No more";
       }
 
-      // Fetch news by month (uses your /api/news/?month=YYYY-MM)
+      // --- fetch helpers with loop protection ---
+      function resetInFlight() {
+        if (inFlight) inFlight.abort();
+        inFlight = new AbortController();
+        return inFlight.signal;
+      }
+
+      async function fetchPaged(url, append = false) {
+        if (isLoading) return;
+        if (url && visitedNext.has(url)) {
+          nextPageUrl = null;
+          renderNewsList([], true);
+          return;
+        }
+
+        isLoading = true;
+        const loadMoreBtn = document.getElementById("loadMoreBtn");
+        if (!append) visitedNext.clear();
+        if (append) {
+          loadMoreBtn.disabled = true;
+          loadMoreBtn.textContent = "Loading…";
+        }
+
+        try {
+          const res = await fetch(url, { signal: inFlight?.signal });
+          if (!res.ok) throw new Error(await res.text());
+          const data = await res.json();
+          const items = Array.isArray(data) ? data : data.results ?? [];
+          const nextUrl = Array.isArray(data) ? null : data.next || null;
+
+          if (url) visitedNext.add(url);
+          nextPageUrl = nextUrl;
+
+          renderNewsList(items, append);
+        } catch (err) {
+          if (err.name !== "AbortError") {
+            console.error("Fetch error:", err);
+            nextPageUrl = null;
+            if (append) renderNewsList([], true);
+          }
+        } finally {
+          isLoading = false;
+          if (nextPageUrl) {
+            loadMoreBtn.disabled = false;
+            loadMoreBtn.textContent = "Load more";
+          } else {
+            loadMoreBtn.disabled = true;
+            loadMoreBtn.textContent = "No more";
+          }
+        }
+      }
+
       async function fetchNewsByMonth(
         month,
         urlOverride = null,
         append = false
       ) {
-        const url =
-          urlOverride || `/api/news/?month=${encodeURIComponent(month)}`;
-        const res = await fetch(url);
-        if (!res.ok) {
-          console.error("Failed to fetch monthly news:", await res.text());
-          renderNewsList([], append);
-          return;
-        }
-        const data = await res.json();
-        const items = Array.isArray(data) ? data : data.results;
-        nextPageUrl = data.next || null;
-        renderNewsList(items, append);
+        const signal = resetInFlight();
+        const base = `/api/news/?month=${encodeURIComponent(month)}`;
+        const url = urlOverride || base;
+        inFlight.signal = signal;
+        await fetchPaged(url, append);
       }
 
-      // Latest news (All filter)
       async function fetchLatestNews(urlOverride = null, append = false) {
-        // backend already defaults to newest-first
-        const url = urlOverride || `/api/news/`;
-        const res = await fetch(url);
-        if (!res.ok) {
-          console.error("Failed to fetch latest news:", await res.text());
-          renderNewsList([], append);
-          return;
-        }
-        const data = await res.json();
-        const items = Array.isArray(data) ? data : data.results;
-        nextPageUrl = data.next || null;
-        renderNewsList(items, append);
+        const signal = resetInFlight();
+        const base = `/api/news/`; // relies on newest-first backend ordering
+        const url = urlOverride || base;
+        inFlight.signal = signal;
+        await fetchPaged(url, append);
       }
 
+      // --- UI wiring ---
       function renderMonthButtons() {
         const filterDiv = document.getElementById("monthFilter");
         filterDiv.innerHTML = "";
 
-        months.forEach((month) => {
+        // newest month first in buttons
+        const monthsDesc = uniqueMonthsDesc(allData);
+
+        monthsDesc.forEach((month) => {
           const btn = document.createElement("button");
           btn.textContent = month;
           btn.onclick = async () => {
@@ -351,7 +419,7 @@
               .forEach((b) => b.classList.remove("active"));
             btn.classList.add("active");
 
-            // Chart for that month
+            // Chart for that month (chronological)
             const filtered = allData.filter((item) =>
               item.date.startsWith(month)
             );
@@ -363,12 +431,13 @@
               "newsTitle"
             ).textContent = `News — ${month}`;
             nextPageUrl = null;
+            visitedNext.clear();
             await fetchNewsByMonth(month);
           };
           filterDiv.appendChild(btn);
         });
 
-        // "All" button: show weekly chart + latest news (NEWEST FIRST)
+        // "All" button (weekly chart + latest news)
         const allBtn = document.createElement("button");
         allBtn.textContent = "All";
         allBtn.classList.add("active");
@@ -378,17 +447,18 @@
             .forEach((b) => b.classList.remove("active"));
           allBtn.classList.add("active");
 
-          // Weekly downsample for the chart
+          // Weekly downsample (keep chronological)
           const weekData = [];
-          let lastWeek = null;
-          allData.forEach((item) => {
-            const dateObj = new Date(item.date);
-            const week = `${dateObj.getFullYear()}-W${Math.ceil(
-              dateObj.getDate() / 7
+          let lastWeekKey = null;
+          const sortedAll = sortByDateAsc(allData);
+          sortedAll.forEach((item) => {
+            const d = new Date(item.date);
+            const key = `${d.getFullYear()}-M${d.getMonth() + 1}-W${Math.ceil(
+              d.getDate() / 7
             )}`;
-            if (week !== lastWeek) {
+            if (key !== lastWeekKey) {
               weekData.push(item);
-              lastWeek = week;
+              lastWeekKey = key;
             }
           });
           renderChart(weekData, "All Months (Weekly)");
@@ -396,17 +466,17 @@
           // Show newest news
           currentMonth = null;
           nextPageUrl = null;
+          visitedNext.clear();
           document.getElementById("newsTitle").textContent = "Latest News";
           await fetchLatestNews();
         };
         filterDiv.insertBefore(allBtn, filterDiv.firstChild);
       }
 
-      // Load more continues in the same mode
       document
         .getElementById("loadMoreBtn")
         .addEventListener("click", async () => {
-          if (!nextPageUrl) return;
+          if (!nextPageUrl || isLoading) return;
           if (currentMonth) {
             await fetchNewsByMonth(currentMonth, nextPageUrl, true);
           } else {
@@ -414,19 +484,18 @@
           }
         });
 
-      // Initial bootstrap
+      // --- initial load ---
       fetch("/api/dashboard/sentiment-stats/")
         .then((response) => response.json())
         .then(async (data) => {
-          allData = data.map((item) => ({ ...item, date: item.date }));
-          months = [...new Set(data.map((item) => item.date.slice(0, 7)))];
+          allData = data.map((item) => ({ ...item, date: item.date })); // keep your shape
+          months = uniqueMonthsAsc(allData); // available if needed
           renderMonthButtons();
 
-          renderChart(allData, "All Months (Weekly)");
+          renderChart(allData, "All Months");
           document.getElementById("newsTitle").textContent = "Latest News";
           await fetchLatestNews();
         });
     </script>
-    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
   </body>
 </html>
