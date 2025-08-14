@@ -631,6 +631,7 @@
         .then((response) => response.json())
         .then(async (data) => {
           allData = data.map((item) => ({ ...item, date: item.date }));
+          months = [...new Set(data.map((item) => item.date.slice(0, 7)))];
           renderMonthButtons();
 
           renderChart(allData, "All Months");
