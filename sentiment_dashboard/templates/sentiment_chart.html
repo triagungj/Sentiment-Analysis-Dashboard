@@ -157,7 +157,9 @@
         if (labels.length > 0) {
           const latestMonth = labels[labels.length - 1].slice(0, 7);
           const startIdx = labels.findIndex(l => l.slice(0, 7) === latestMonth);
-          chartInstance.zoom({x: {min: startIdx, max: labels.length - 1}}, 'none');
+          chartInstance.options.scales.x.min = startIdx;
+          chartInstance.options.scales.x.max = labels.length - 1;
+          chartInstance.update();
         }
       }
 
