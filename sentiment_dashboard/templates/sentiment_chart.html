@@ -88,7 +88,7 @@
             ],
           },
           options: {
-            responsive: false,
+            responsive: true,
             maintainAspectRatio: false,
             plugins: {
               legend: {
@@ -108,6 +108,21 @@
                   : "Sentiment Statistics Per Month",
                 font: { size: 18 },
               },
+              zoom: {
+                pan: {
+                  enabled: true,
+                  mode: 'x',
+                },
+                zoom: {
+                  wheel: {
+                    enabled: true,
+                  },
+                  pinch: {
+                    enabled: true
+                  },
+                  mode: 'x',
+                }
+              }
             },
             scales: {
               x: {
@@ -116,6 +131,11 @@
                   text: "Date",
                   color: "#343a40",
                   font: { size: 14 },
+                },
+                ticks: {
+                  autoSkip: false,
+                  maxRotation: 90,
+                  minRotation: 45,
                 },
               },
               y: {
@@ -189,5 +209,6 @@
           renderChart(allData, "All Months");
         });
     </script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
   </body>
 </html>
