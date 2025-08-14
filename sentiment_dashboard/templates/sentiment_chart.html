@@ -22,11 +22,19 @@
         color: #fff;
         border-color: #007bff;
       }
+
       .chart-container {
         overflow-x: auto;
         width: 100%;
-        min-height: 70vh; /* from your latest */
+        min-height: 70vh; /* your setting */
+        cursor: grab; /* drag-to-scroll UX */
+        touch-action: pan-y; /* allow vertical touch scroll; we handle horizontal */
       }
+      .chart-container.dragging {
+        cursor: grabbing;
+        user-select: none;
+      }
+
       #sentimentChart {
         height: 400px;
       }
@@ -126,7 +134,7 @@
       let allData = [];
       let months = [];
 
-      // Pagination & fetch safety
+      // Pagination & safety
       let currentMonth = null; // null = "All"
       let nextPageUrl = null;
       let isLoading = false;
@@ -143,22 +151,73 @@
           <circle cx="22" cy="22" r="8" fill="#e5e5e5"/>
         </svg>`
         );
-
-      // --- utilities ---
+      // --- helpers ---
       function sortByDateAsc(arr) {
         return arr.slice().sort((a, b) => new Date(a.date) - new Date(b.date));
       }
-      function uniqueMonthsAsc(arr) {
-        const set = new Set(arr.map((i) => i.date.slice(0, 7)));
-        return Array.from(set).sort(); // 2024-02 < 2024-10 < 2025-01
-      }
-      function uniqueMonthsDesc(arr) {
-        return uniqueMonthsAsc(arr).reverse();
+
+      // Drag-to-scroll on container
+      function enableDragScroll(scroller) {
+        let isDown = false;
+        let startX = 0;
+        let startScrollLeft = 0;
+        let isDragging = false;
+        const DRAG_THRESHOLD = 3;
+
+        const setTooltipEnabled = (enabled) => {
+          if (!chartInstance) return;
+          chartInstance.options.plugins.tooltip =
+            chartInstance.options.plugins.tooltip || {};
+          chartInstance.options.plugins.tooltip.enabled = enabled;
+          chartInstance.update("none");
+        };
+
+        scroller.addEventListener(
+          "pointerdown",
+          (e) => {
+            if (e.pointerType === "mouse" && e.button !== 0) return;
+            isDown = true;
+            isDragging = false;
+            startX = e.clientX;
+            startScrollLeft = scroller.scrollLeft;
+            scroller.classList.add("dragging");
+            scroller.setPointerCapture?.(e.pointerId);
+          },
+          { passive: true }
+        );
+
+        scroller.addEventListener(
+          "pointermove",
+          (e) => {
+            if (!isDown) return;
+            const dx = e.clientX - startX;
+            if (!isDragging && Math.abs(dx) > DRAG_THRESHOLD) {
+              isDragging = true;
+              setTooltipEnabled(false);
+            }
+            if (isDragging) {
+              e.preventDefault();
+              scroller.scrollLeft = startScrollLeft - dx;
+            }
+          },
+          { passive: false }
+        );
+
+        const endDrag = (e) => {
+          if (!isDown) return;
+          isDown = false;
+          scroller.classList.remove("dragging");
+          scroller.releasePointerCapture?.(e.pointerId);
+          setTooltipEnabled(true);
+        };
+        scroller.addEventListener("pointerup", endDrag, { passive: true });
+        scroller.addEventListener("pointerleave", endDrag, { passive: true });
+        scroller.addEventListener("pointercancel", endDrag, { passive: true });
       }
 
       // --- chart ---
       function renderChart(filteredData, monthLabel) {
-        // REVERSED: ensure chronological order (newest on the right)
+        // Reverse order request: ensure chronological (oldest -> newest), so newest sits on the RIGHT
         const sorted = sortByDateAsc(filteredData);
 
         const labels = sorted.map((item) => item.date);
@@ -166,7 +225,7 @@
         const neutral = sorted.map((item) => item.neutral);
         const negative = sorted.map((item) => item.negative);
 
-        // Set chart width dynamically based on data size
+        // dynamic width
         const chartCanvas = document.getElementById("sentimentChart");
         chartCanvas.width = Math.max(1600, labels.length * 20);
 
@@ -175,13 +234,13 @@
         chartInstance = new Chart(ctx, {
           type: "line",
           data: {
-            labels: labels,
+            labels,
             datasets: [
               {
                 label: "Positive",
                 data: positive,
                 borderColor: "#0072B2",
-                backgroundColor: "rgba(0, 114, 178, 0.2)",
+                backgroundColor: "rgba(0,114,178,0.2)",
                 fill: false,
                 tension: 0.3,
                 pointRadius: 2,
@@ -190,7 +249,7 @@
                 label: "Neutral",
                 data: neutral,
                 borderColor: "#E69F00",
-                backgroundColor: "rgba(230, 159, 0, 0.2)",
+                backgroundColor: "rgba(230,159,0,0.2)",
                 fill: false,
                 tension: 0.3,
                 pointRadius: 2,
@@ -199,7 +258,7 @@
                 label: "Negative",
                 data: negative,
                 borderColor: "#009E73",
-                backgroundColor: "rgba(0, 158, 115, 0.2)",
+                backgroundColor: "rgba(0,158,115,0.2)",
                 fill: false,
                 tension: 0.3,
                 pointRadius: 2,
@@ -228,15 +287,15 @@
                 font: { size: 18 },
               },
               zoom: {
-                pan: { enabled: true, mode: "x" },
-                // Require Ctrl for wheel zoom to avoid accidental zoom on horizontal scroll
+                pan: { enabled: false, mode: "x" }, // disable pan to avoid fighting with container drag
                 zoom: {
-                  wheel: { enabled: true, modifierKey: "ctrl" },
+                  wheel: { enabled: true, modifierKey: "ctrl" }, // require Ctrl to zoom with wheel
                   pinch: { enabled: true },
                   mode: "x",
                 },
                 limits: { x: { min: 0, max: labels.length - 1 } },
               },
+              tooltip: { enabled: true },
             },
             scales: {
               x: {
@@ -261,7 +320,7 @@
           },
         });
 
-        // Focus latest month on initial render (except weekly-all)
+        // focus latest month range (except weekly-all scenario where label text differs)
         if (labels.length > 0 && monthLabel !== "All Months (Weekly)") {
           const latestMonth = labels[labels.length - 1].slice(0, 7);
           const startIdx = labels.findIndex(
@@ -273,14 +332,13 @@
         }
       }
 
-      // --- news list rendering ---
+      // --- news list ---
       function renderNewsList(items, append = false) {
         const list = document.getElementById("newsList");
         const loadMoreBtn = document.getElementById("loadMoreBtn");
 
         if (!append) list.innerHTML = "";
 
-        // Handle empty page for "load more"
         if (append && (!items || items.length === 0)) {
           loadMoreBtn.style.display = "none";
           loadMoreBtn.disabled = true;
@@ -407,10 +465,8 @@
         const filterDiv = document.getElementById("monthFilter");
         filterDiv.innerHTML = "";
 
-        // newest month first in buttons
-        const monthsDesc = uniqueMonthsDesc(allData);
-
-        monthsDesc.forEach((month) => {
+        // Keep your original month order
+        months.forEach((month) => {
           const btn = document.createElement("button");
           btn.textContent = month;
           btn.onclick = async () => {
@@ -419,13 +475,11 @@
               .forEach((b) => b.classList.remove("active"));
             btn.classList.add("active");
 
-            // Chart for that month (chronological)
             const filtered = allData.filter((item) =>
               item.date.startsWith(month)
             );
             renderChart(filtered, month);
 
-            // News for that month
             currentMonth = month;
             document.getElementById(
               "newsTitle"
@@ -437,7 +491,7 @@
           filterDiv.appendChild(btn);
         });
 
-        // "All" button (weekly chart + latest news)
+        // "All" button
         const allBtn = document.createElement("button");
         allBtn.textContent = "All";
         allBtn.classList.add("active");
@@ -447,7 +501,7 @@
             .forEach((b) => b.classList.remove("active"));
           allBtn.classList.add("active");
 
-          // Weekly downsample (keep chronological)
+          // Downsample to weekly (chronological)
           const weekData = [];
           let lastWeekKey = null;
           const sortedAll = sortByDateAsc(allData);
@@ -463,7 +517,6 @@
           });
           renderChart(weekData, "All Months (Weekly)");
 
-          // Show newest news
           currentMonth = null;
           nextPageUrl = null;
           visitedNext.clear();
@@ -488,14 +541,31 @@
       fetch("/api/dashboard/sentiment-stats/")
         .then((response) => response.json())
         .then(async (data) => {
-          allData = data.map((item) => ({ ...item, date: item.date })); // keep your shape
-          months = uniqueMonthsAsc(allData); // available if needed
+          allData = data.map((item) => ({ ...item, date: item.date }));
+          months = [...new Set(data.map((item) => item.date.slice(0, 7)))];
           renderMonthButtons();
 
-          renderChart(allData, "All Months");
+          // Default: All view (weekly chart + newest news)
+          const weekData = [];
+          let lastWeekKey = null;
+          const sortedAll = sortByDateAsc(allData);
+          sortedAll.forEach((item) => {
+            const d = new Date(item.date);
+            const key = `${d.getFullYear()}-M${d.getMonth() + 1}-W${Math.ceil(
+              d.getDate() / 7
+            )}`;
+            if (key !== lastWeekKey) {
+              weekData.push(item);
+              lastWeekKey = key;
+            }
+          });
+          renderChart(weekData, "All Months (Weekly)");
           document.getElementById("newsTitle").textContent = "Latest News";
           await fetchLatestNews();
         });
+
+      // Enable drag-to-scroll
+      enableDragScroll(document.querySelector(".chart-container"));
     </script>
   </body>
 </html>
