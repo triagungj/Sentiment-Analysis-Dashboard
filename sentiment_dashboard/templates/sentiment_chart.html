@@ -141,6 +141,9 @@
       const visitedNext = new Set();
       let inFlight = null; // AbortController
 
+      // Drag state shared with tooltip hover
+      let containerDragging = false;
+
       // Placeholder image
       const PLACEHOLDER_SVG =
         "data:image/svg+xml;utf8," +
@@ -151,6 +154,17 @@
           <circle cx="22" cy="22" r="8" fill="#e5e5e5"/>
         </svg>`
         );
+      function getNewsImage(n) {
+        return (
+          n.image_url ||
+          n.thumbnail ||
+          n.image ||
+          n.cover ||
+          n.thumbnail_url ||
+          null
+        );
+      }
+
       // --- helpers ---
       function sortByDateAsc(arr) {
         return arr.slice().sort((a, b) => new Date(a.date) - new Date(b.date));
@@ -161,7 +175,7 @@
         let isDown = false;
         let startX = 0;
         let startScrollLeft = 0;
-        let isDragging = false;
+        let isDraggingInternal = false;
         const DRAG_THRESHOLD = 3;
 
         const setTooltipEnabled = (enabled) => {
@@ -177,10 +191,11 @@
           (e) => {
             if (e.pointerType === "mouse" && e.button !== 0) return;
             isDown = true;
-            isDragging = false;
+            isDraggingInternal = false;
             startX = e.clientX;
             startScrollLeft = scroller.scrollLeft;
             scroller.classList.add("dragging");
+            containerDragging = true;
             scroller.setPointerCapture?.(e.pointerId);
           },
           { passive: true }
@@ -191,11 +206,18 @@
           (e) => {
             if (!isDown) return;
             const dx = e.clientX - startX;
-            if (!isDragging && Math.abs(dx) > DRAG_THRESHOLD) {
-              isDragging = true;
-              setTooltipEnabled(false);
+            if (!isDraggingInternal && Math.abs(dx) > DRAG_THRESHOLD) {
+              isDraggingInternal = true;
+              setTooltipEnabled(false); // prevent flicker
+              // clear any programmatic tooltip
+              if (chartInstance) {
+                chartInstance.setActiveElements([]);
+                chartInstance.tooltip.setActiveElements([], { x: 0, y: 0 });
+                chartInstance.$hoverIndex = null;
+                chartInstance.update("none");
+              }
             }
-            if (isDragging) {
+            if (isDraggingInternal) {
               e.preventDefault();
               scroller.scrollLeft = startScrollLeft - dx;
             }
@@ -207,6 +229,7 @@
           if (!isDown) return;
           isDown = false;
           scroller.classList.remove("dragging");
+          containerDragging = false;
           scroller.releasePointerCapture?.(e.pointerId);
           setTooltipEnabled(true);
         };
@@ -215,9 +238,82 @@
         scroller.addEventListener("pointercancel", endDrag, { passive: true });
       }
 
+      // --- vertical hover line plugin for tooltip alignment ---
+      const vlineHoverPlugin = {
+        id: "vlineHover",
+        afterDatasetsDraw(chart, args, pluginOptions) {
+          const idx = chart.$hoverIndex;
+          if (idx == null) return;
+          const {
+            ctx,
+            chartArea: { top, bottom },
+            scales: { x },
+          } = chart;
+          const xPos = x.getPixelForValue(idx);
+          ctx.save();
+          ctx.beginPath();
+          ctx.moveTo(xPos, top);
+          ctx.lineTo(xPos, bottom);
+          ctx.lineWidth = 1;
+          ctx.setLineDash([4, 3]);
+          ctx.strokeStyle = "#adb5bd";
+          ctx.stroke();
+          ctx.restore();
+        },
+      };
+      if (window.Chart) {
+        Chart.register(vlineHoverPlugin);
+        // If your zoom plugin isn't auto-registered by the CDN, uncomment:
+        // if (window.ChartZoom) Chart.register(window.ChartZoom);
+      }
+
+      // Show tooltip when pointer is aligned with an X tick/label (any Y)
+      function enableAxisHoverTooltip(chart) {
+        const canvas = chart.canvas;
+        const xScale = chart.scales.x;
+
+        // Use property handlers to avoid duplicate listeners across chart re-creations
+        canvas.onmousemove = (e) => {
+          if (!xScale || containerDragging) return;
+          const rect = canvas.getBoundingClientRect();
+          const x = e.clientX - rect.left;
+
+          let idx = xScale.getValueForPixel(x);
+          if (idx == null || Number.isNaN(idx)) return;
+
+          // category scale returns index; ensure integer & within bounds
+          idx = Math.round(idx);
+          idx = Math.max(0, Math.min(idx, chart.data.labels.length - 1));
+
+          // Build active elements for all datasets at this index
+          const elements = chart.data.datasets.map((_, di) => ({
+            datasetIndex: di,
+            index: idx,
+          }));
+
+          // Position tooltip near the top at this x (so it's visible even if pointer is on the axis)
+          const vp = {
+            x: xScale.getPixelForValue(idx),
+            y: chart.scales.y?.top ?? chart.chartArea.top,
+          };
+
+          chart.setActiveElements(elements);
+          chart.tooltip.setActiveElements(elements, vp);
+          chart.$hoverIndex = idx;
+          chart.update("none");
+        };
+
+        canvas.onmouseleave = () => {
+          chart.setActiveElements([]);
+          chart.tooltip.setActiveElements([], { x: 0, y: 0 });
+          chart.$hoverIndex = null;
+          chart.update("none");
+        };
+      }
+
       // --- chart ---
       function renderChart(filteredData, monthLabel) {
-        // Reverse order request: ensure chronological (oldest -> newest), so newest sits on the RIGHT
+        // Ensure chronological order so NEWEST is on the RIGHT
         const sorted = sortByDateAsc(filteredData);
 
         const labels = sorted.map((item) => item.date);
@@ -268,6 +364,7 @@
           options: {
             responsive: true,
             maintainAspectRatio: false,
+            interaction: { mode: "index", intersect: false, axis: "x" }, // normal hover anywhere in chart area
             plugins: {
               legend: {
                 labels: {
@@ -320,7 +417,10 @@
           },
         });
 
-        // focus latest month range (except weekly-all scenario where label text differs)
+        // enable tooltip-on-label behavior + vertical hover line
+        enableAxisHoverTooltip(chartInstance);
+
+        // focus latest month range (except weekly-all scenario)
         if (labels.length > 0 && monthLabel !== "All Months (Weekly)") {
           const latestMonth = labels[labels.length - 1].slice(0, 7);
           const startIdx = labels.findIndex(
@@ -360,7 +460,7 @@
           const date = n.published_at || n.created_at || n.date || "";
           const source = n.source?.name || n.source || "";
           const sentiment = n.sentiment || "";
-          const imgSrc = n.image_link || PLACEHOLDER_SVG;
+          const imgSrc = getNewsImage(n) || PLACEHOLDER_SVG;
 
           const item = document.createElement("div");
           item.className = "news-item";
@@ -465,7 +565,6 @@
         const filterDiv = document.getElementById("monthFilter");
         filterDiv.innerHTML = "";
 
-        // Keep your original month order
         months.forEach((month) => {
           const btn = document.createElement("button");
           btn.textContent = month;
