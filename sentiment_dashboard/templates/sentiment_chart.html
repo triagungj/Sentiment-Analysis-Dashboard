@@ -111,21 +111,21 @@
               zoom: {
                 pan: {
                   enabled: true,
-                  mode: 'x',
+                  mode: "x",
                 },
                 zoom: {
                   wheel: {
                     enabled: true,
                   },
                   pinch: {
-                    enabled: true
+                    enabled: true,
                   },
-                  mode: 'x',
+                  mode: "x",
                 },
                 limits: {
-                  x: {min: 0, max: labels.length - 1}
-                }
-              }
+                  x: { min: 0, max: labels.length - 1 },
+                },
+              },
             },
             scales: {
               x: {
@@ -156,7 +156,9 @@
         // Zoom into the latest month on initial view
         if (labels.length > 0) {
           const latestMonth = labels[labels.length - 1].slice(0, 7);
-          const startIdx = labels.findIndex(l => l.slice(0, 7) === latestMonth);
+          const startIdx = labels.findIndex(
+            (l) => l.slice(0, 7) === latestMonth
+          );
           chartInstance.options.scales.x.min = startIdx;
           chartInstance.options.scales.x.max = labels.length - 1;
           chartInstance.update();
