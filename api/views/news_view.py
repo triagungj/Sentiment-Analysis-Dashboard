@@ -2,6 +2,12 @@ from rest_framework import viewsets, permissions, filters
 from api.models.news_model import News, NewsReadSerializer, NewsWriteSerializer
 from drf_yasg.utils import swagger_auto_schema
 from api.services.sentiment import predict_sentiment 
+from rest_framework.pagination import PageNumberPagination
+
+class NewsPagination(PageNumberPagination):
+    page_size = 10
+    page_size_query_param = 'page_size'
+    max_page_size = 100
 
 class NewsViewSet(viewsets.ModelViewSet):
     queryset = News.objects.all().order_by("id")
@@ -9,6 +15,7 @@ class NewsViewSet(viewsets.ModelViewSet):
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ["title"]
     ordering_fields = ["id", "title"]
+    pagination_class = NewsPagination
 
     def get_serializer_class(self):
         if self.action in ["list", "retrieve"]:
