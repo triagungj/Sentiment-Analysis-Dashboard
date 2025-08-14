@@ -3,94 +3,155 @@
   <head>
     <title>Sentiment Chart</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+      .month-filter {
+        margin-bottom: 20px;
+      }
+      .month-filter button {
+        margin-right: 8px;
+        padding: 6px 16px;
+        font-size: 15px;
+        border-radius: 4px;
+        border: 1px solid #ccc;
+        background: #f8f9fa;
+        cursor: pointer;
+      }
+      .month-filter button.active {
+        background: #007bff;
+        color: #fff;
+        border-color: #007bff;
+      }
+    </style>
   </head>
   <body>
     <h2>Sentiment Statistics Per Month</h2>
+    <div class="month-filter" id="monthFilter"></div>
     <canvas id="sentimentChart" width="800" height="400"></canvas>
     <script>
+      let chartInstance = null;
+      let allData = [];
+      let months = [];
+
+      function renderChart(filteredData, monthLabel) {
+        const labels = filteredData.map((item) => item.date);
+        const positive = filteredData.map((item) => item.positive);
+        const neutral = filteredData.map((item) => item.neutral);
+        const negative = filteredData.map((item) => item.negative);
+
+        const ctx = document.getElementById("sentimentChart").getContext("2d");
+        if (chartInstance) chartInstance.destroy();
+        chartInstance = new Chart(ctx, {
+          type: "line",
+          data: {
+            labels: labels,
+            datasets: [
+              {
+                label: "Positive",
+                data: positive,
+                borderColor: "rgba(40, 167, 69, 1)",
+                backgroundColor: "rgba(40, 167, 69, 0.2)",
+                fill: false,
+                tension: 0.3,
+                pointRadius: 2,
+              },
+              {
+                label: "Neutral",
+                data: neutral,
+                borderColor: "rgba(108, 117, 125, 1)",
+                backgroundColor: "rgba(108, 117, 125, 0.2)",
+                fill: false,
+                tension: 0.3,
+                pointRadius: 2,
+              },
+              {
+                label: "Negative",
+                data: negative,
+                borderColor: "rgba(220, 53, 69, 1)",
+                backgroundColor: "rgba(220, 53, 69, 0.2)",
+                fill: false,
+                tension: 0.3,
+                pointRadius: 2,
+              },
+            ],
+          },
+          options: {
+            responsive: true,
+            plugins: {
+              legend: {
+                labels: {
+                  color: "#343a40",
+                  font: {
+                    size: 16,
+                    family: "Helvetica Neue, Arial, sans-serif",
+                    weight: "bold",
+                  },
+                },
+              },
+              title: {
+                display: true,
+                text: monthLabel ? `Sentiment for ${monthLabel}` : "Sentiment Statistics Per Month",
+                font: { size: 18 },
+              },
+            },
+            scales: {
+              x: {
+                title: {
+                  display: true,
+                  text: "Date",
+                  color: "#343a40",
+                  font: { size: 14 },
+                },
+              },
+              y: {
+                beginAtZero: true,
+                title: {
+                  display: true,
+                  text: "Count",
+                  color: "#343a40",
+                  font: { size: 14 },
+                },
+              },
+            },
+          },
+        });
+      }
+
+      function renderMonthButtons() {
+        const filterDiv = document.getElementById("monthFilter");
+        filterDiv.innerHTML = "";
+        months.forEach((month) => {
+          const btn = document.createElement("button");
+          btn.textContent = month;
+          btn.onclick = () => {
+            document.querySelectorAll('.month-filter button').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            const filtered = allData.filter((item) => item.date.startsWith(month));
+            renderChart(filtered, month);
+          };
+          filterDiv.appendChild(btn);
+        });
+        // Add 'All' button
+        const allBtn = document.createElement("button");
+        allBtn.textContent = "All";
+        allBtn.classList.add('active');
+        allBtn.onclick = () => {
+          document.querySelectorAll('.month-filter button').forEach(b => b.classList.remove('active'));
+          allBtn.classList.add('active');
+          renderChart(allData, "All Months");
+        };
+        filterDiv.insertBefore(allBtn, filterDiv.firstChild);
+      }
+
       fetch("/api/dashboard/sentiment-stats/")
         .then((response) => response.json())
         .then((data) => {
-          const labels = data.map((item) => {
-            const [year, month] = item.date.split("-");
-            return `${year}-${month}`;
-          });
-          const positive = data.map((item) => item.positive);
-          const neutral = data.map((item) => item.neutral);
-          const negative = data.map((item) => item.negative);
-
-          const ctx = document
-            .getElementById("sentimentChart")
-            .getContext("2d");
-          new Chart(ctx, {
-            type: "line",
-            data: {
-              labels: labels,
-              datasets: [
-                {
-                  label: "Positive",
-                  data: positive,
-                  borderColor: "rgba(40, 167, 69, 1)",
-                  backgroundColor: "rgba(40, 167, 69, 0.2)",
-                  fill: false,
-                  tension: 0.3,
-                  pointRadius: 2,
-                },
-                {
-                  label: "Neutral",
-                  data: neutral,
-                  borderColor: "rgba(108, 117, 125, 1)",
-                  backgroundColor: "rgba(108, 117, 125, 0.2)",
-                  fill: false,
-                  tension: 0.3,
-                  pointRadius: 2,
-                },
-                {
-                  label: "Negative",
-                  data: negative,
-                  borderColor: "rgba(220, 53, 69, 1)",
-                  backgroundColor: "rgba(220, 53, 69, 0.2)",
-                  fill: false,
-                  tension: 0.3,
-                  pointRadius: 2,
-                },
-              ],
-            },
-            options: {
-              responsive: true,
-              plugins: {
-                legend: {
-                  labels: {
-                    color: "#343a40",
-                    font: {
-                      size: 16,
-                      family: "Helvetica Neue, Arial, sans-serif",
-                      weight: "bold",
-                    },
-                  },
-                },
-              },
-              scales: {
-                x: {
-                  title: {
-                    display: true,
-                    text: "Month",
-                    color: "#343a40",
-                    font: { size: 14 },
-                  },
-                },
-                y: {
-                  beginAtZero: true,
-                  title: {
-                    display: true,
-                    text: "Count",
-                    color: "#343a40",
-                    font: { size: 14 },
-                  },
-                },
-              },
-            },
-          });
+          allData = data.map((item) => ({
+            ...item,
+            date: item.date, // keep full date for filtering
+          }));
+          months = [...new Set(data.map((item) => item.date.slice(0, 7)))];
+          renderMonthButtons();
+          renderChart(allData, "All Months");
         });
     </script>
   </body>
