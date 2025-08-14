@@ -48,8 +48,8 @@
               {
                 label: "Positive",
                 data: positive,
-                borderColor: "rgba(40, 167, 69, 1)",
-                backgroundColor: "rgba(40, 167, 69, 0.2)",
+                borderColor: "#0072B2", // blue (colorblind safe)
+                backgroundColor: "rgba(0, 114, 178, 0.2)",
                 fill: false,
                 tension: 0.3,
                 pointRadius: 2,
@@ -57,8 +57,8 @@
               {
                 label: "Neutral",
                 data: neutral,
-                borderColor: "rgba(108, 117, 125, 1)",
-                backgroundColor: "rgba(108, 117, 125, 0.2)",
+                borderColor: "#E69F00", // orange (colorblind safe)
+                backgroundColor: "rgba(230, 159, 0, 0.2)",
                 fill: false,
                 tension: 0.3,
                 pointRadius: 2,
@@ -66,8 +66,8 @@
               {
                 label: "Negative",
                 data: negative,
-                borderColor: "rgba(220, 53, 69, 1)",
-                backgroundColor: "rgba(220, 53, 69, 0.2)",
+                borderColor: "#009E73", // green (colorblind safe)
+                backgroundColor: "rgba(0, 158, 115, 0.2)",
                 fill: false,
                 tension: 0.3,
                 pointRadius: 2,
@@ -89,7 +89,9 @@
               },
               title: {
                 display: true,
-                text: monthLabel ? `Sentiment for ${monthLabel}` : "Sentiment Statistics Per Month",
+                text: monthLabel
+                  ? `Sentiment for ${monthLabel}`
+                  : "Sentiment Statistics Per Month",
                 font: { size: 18 },
               },
             },
@@ -123,9 +125,13 @@
           const btn = document.createElement("button");
           btn.textContent = month;
           btn.onclick = () => {
-            document.querySelectorAll('.month-filter button').forEach(b => b.classList.remove('active'));
-            btn.classList.add('active');
-            const filtered = allData.filter((item) => item.date.startsWith(month));
+            document
+              .querySelectorAll(".month-filter button")
+              .forEach((b) => b.classList.remove("active"));
+            btn.classList.add("active");
+            const filtered = allData.filter((item) =>
+              item.date.startsWith(month)
+            );
             renderChart(filtered, month);
           };
           filterDiv.appendChild(btn);
@@ -133,11 +139,26 @@
         // Add 'All' button
         const allBtn = document.createElement("button");
         allBtn.textContent = "All";
-        allBtn.classList.add('active');
+        allBtn.classList.add("active");
         allBtn.onclick = () => {
-          document.querySelectorAll('.month-filter button').forEach(b => b.classList.remove('active'));
-          allBtn.classList.add('active');
-          renderChart(allData, "All Months");
+          document
+            .querySelectorAll(".month-filter button")
+            .forEach((b) => b.classList.remove("active"));
+          allBtn.classList.add("active");
+          // Downsample data for 'All' view: show one point per week
+          const weekData = [];
+          let lastWeek = null;
+          allData.forEach((item) => {
+            const dateObj = new Date(item.date);
+            const week = `${dateObj.getFullYear()}-W${Math.ceil(
+              dateObj.getDate() / 7
+            )}`;
+            if (week !== lastWeek) {
+              weekData.push(item);
+              lastWeek = week;
+            }
+          });
+          renderChart(weekData, "All Months (Weekly)");
         };
         filterDiv.insertBefore(allBtn, filterDiv.firstChild);
       }
