@@ -11,34 +11,10 @@
       fetch("/api/dashboard/sentiment-stats/")
         .then((response) => response.json())
         .then((data) => {
-          // Only show month label in the middle of each group
           const labels = data.map((item) => {
             const [year, month] = item.date.split("-");
             return `${year}-${month}`;
           });
-
-          // Find indices where the month changes
-          const monthIndices = [];
-          let prevMonth = labels[0];
-          labels.forEach((label, idx) => {
-            if (label !== prevMonth) {
-              monthIndices.push(Math.floor((idx + monthIndices[monthIndices.length - 1] || 0) / 2));
-              prevMonth = label;
-            }
-          });
-          // Add last group
-          if (labels.length > 0) {
-            const lastMonth = labels[labels.length - 1];
-            const lastIdx = labels.lastIndexOf(lastMonth);
-            const firstIdx = labels.indexOf(lastMonth);
-            monthIndices.push(Math.floor((firstIdx + lastIdx) / 2));
-          }
-
-          // Set all labels to empty except the middle index of each month
-          const displayLabels = labels.map((label, idx) => {
-            return monthIndices.includes(idx) ? label : "";
-          });
-
           const positive = data.map((item) => item.positive);
           const neutral = data.map((item) => item.neutral);
           const negative = data.map((item) => item.negative);
@@ -47,30 +23,36 @@
             .getElementById("sentimentChart")
             .getContext("2d");
           new Chart(ctx, {
-            type: "bar",
+            type: "line",
             data: {
-              labels: displayLabels,
+              labels: labels,
               datasets: [
                 {
                   label: "Positive",
                   data: positive,
-                  backgroundColor: "rgba(40, 167, 69, 0.7)",
                   borderColor: "rgba(40, 167, 69, 1)",
-                  borderWidth: 1,
+                  backgroundColor: "rgba(40, 167, 69, 0.2)",
+                  fill: false,
+                  tension: 0.3,
+                  pointRadius: 2,
                 },
                 {
                   label: "Neutral",
                   data: neutral,
-                  backgroundColor: "rgba(108, 117, 125, 0.7)",
                   borderColor: "rgba(108, 117, 125, 1)",
-                  borderWidth: 1,
+                  backgroundColor: "rgba(108, 117, 125, 0.2)",
+                  fill: false,
+                  tension: 0.3,
+                  pointRadius: 2,
                 },
                 {
                   label: "Negative",
                   data: negative,
-                  backgroundColor: "rgba(220, 53, 69, 0.7)",
                   borderColor: "rgba(220, 53, 69, 1)",
-                  borderWidth: 1,
+                  backgroundColor: "rgba(220, 53, 69, 0.2)",
+                  fill: false,
+                  tension: 0.3,
+                  pointRadius: 2,
                 },
               ],
             },
@@ -90,7 +72,6 @@
               },
               scales: {
                 x: {
-                  stacked: true,
                   title: {
                     display: true,
                     text: "Month",
@@ -99,7 +80,6 @@
                   },
                 },
                 y: {
-                  stacked: true,
                   beginAtZero: true,
                   title: {
                     display: true,
