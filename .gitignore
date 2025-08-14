@@ -32,6 +32,7 @@ settings_local.py
 .ipynb_checkpoints
 
 # Model files
+pretrained_model/
 *.safetensors
 *.pkl
 
