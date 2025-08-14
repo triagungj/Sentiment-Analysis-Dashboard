@@ -113,7 +113,7 @@
     </style>
   </head>
   <body>
-    <h2>Sentiment Statistics</h2>
+    <h2>Sentiment Statistics Per Month</h2>
     <div class="month-filter" id="monthFilter"></div>
 
     <div class="chart-container">
@@ -631,6 +631,7 @@
         .then((response) => response.json())
         .then(async (data) => {
           allData = data.map((item) => ({ ...item, date: item.date }));
+          renderMonthButtons();
 
           renderChart(allData, "All Months");
           document.getElementById("newsTitle").textContent = "Latest News";
