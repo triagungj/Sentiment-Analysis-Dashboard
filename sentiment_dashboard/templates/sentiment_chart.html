@@ -21,12 +21,21 @@
         color: #fff;
         border-color: #007bff;
       }
+      .chart-container {
+        overflow-x: auto;
+        width: 100%;
+      }
+      #sentimentChart {
+        height: 400px;
+      }
     </style>
   </head>
   <body>
     <h2>Sentiment Statistics Per Month</h2>
     <div class="month-filter" id="monthFilter"></div>
-    <canvas id="sentimentChart" width="800" height="400"></canvas>
+    <div class="chart-container">
+      <canvas id="sentimentChart" width="1600" height="400"></canvas>
+    </div>
     <script>
       let chartInstance = null;
       let allData = [];
@@ -38,7 +47,11 @@
         const neutral = filteredData.map((item) => item.neutral);
         const negative = filteredData.map((item) => item.negative);
 
-        const ctx = document.getElementById("sentimentChart").getContext("2d");
+        // Set chart width dynamically based on data size
+        const chartCanvas = document.getElementById("sentimentChart");
+        chartCanvas.width = Math.max(1600, labels.length * 20);
+
+        const ctx = chartCanvas.getContext("2d");
         if (chartInstance) chartInstance.destroy();
         chartInstance = new Chart(ctx, {
           type: "line",
@@ -75,7 +88,8 @@
             ],
           },
           options: {
-            responsive: true,
+            responsive: false,
+            maintainAspectRatio: false,
             plugins: {
               legend: {
                 labels: {
