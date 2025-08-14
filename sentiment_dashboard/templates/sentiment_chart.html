@@ -121,6 +121,9 @@
                     enabled: true
                   },
                   mode: 'x',
+                },
+                limits: {
+                  x: {min: 0, max: labels.length - 1}
                 }
               }
             },
@@ -150,6 +153,12 @@
             },
           },
         });
+        // Zoom into the latest month on initial view
+        if (labels.length > 0) {
+          const latestMonth = labels[labels.length - 1].slice(0, 7);
+          const startIdx = labels.findIndex(l => l.slice(0, 7) === latestMonth);
+          chartInstance.zoom({x: {min: startIdx, max: labels.length - 1}}, 'none');
+        }
       }
 
       function renderMonthButtons() {
