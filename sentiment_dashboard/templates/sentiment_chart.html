@@ -23,16 +23,11 @@
         border-color: #007bff;
       }
 
+      /* Drag-scroll removed */
       .chart-container {
         overflow-x: auto;
         width: 100%;
-        min-height: 70vh; /* your setting */
-        cursor: grab; /* drag-to-scroll UX */
-        touch-action: pan-y; /* allow vertical touch scroll; we handle horizontal */
-      }
-      .chart-container.dragging {
-        cursor: grabbing;
-        user-select: none;
+        min-height: 70vh;
       }
 
       #sentimentChart {
@@ -88,6 +83,8 @@
         overflow: hidden;
         text-overflow: ellipsis;
       }
+
+      /* Badge base */
       .badge {
         display: inline-block;
         padding: 2px 8px;
@@ -97,6 +94,28 @@
         margin-left: 6px;
         text-transform: capitalize;
       }
+      /* Sentiment colors */
+      .badge.sentiment-positive {
+        background: #153adf;
+        color: #fff;
+        border-color: #28a745;
+      }
+      .badge.sentiment-neutral {
+        background: #ffc107;
+        color: #000;
+        border-color: #ffc107;
+      }
+      .badge.sentiment-negative {
+        background: #dc3545;
+        color: #fff;
+        border-color: #dc3545;
+      }
+      .badge.sentiment-unknown {
+        background: #e9ecef;
+        color: #495057;
+        border-color: #ced4da;
+      }
+
       .load-more {
         margin: 12px 0 0 0;
         padding: 8px 14px;
@@ -113,7 +132,7 @@
     </style>
   </head>
   <body>
-    <h2>Sentiment Statistics Per Month</h2>
+    <h2>Stock News Sentiment Analysis</h2>
     <div class="month-filter" id="monthFilter"></div>
 
     <div class="chart-container">
@@ -141,18 +160,15 @@
       const visitedNext = new Set();
       let inFlight = null; // AbortController
 
-      // Drag state shared with tooltip hover
-      let containerDragging = false;
-
       // Placeholder image
       const PLACEHOLDER_SVG =
         "data:image/svg+xml;utf8," +
         encodeURIComponent(
           `<svg xmlns="http://www.w3.org/2000/svg" width="72" height="72">
-          <rect width="100%" height="100%" fill="#f2f2f2"/>
-          <path d="M10 52 L28 34 L40 46 L52 34 L62 44 L62 62 L10 62 Z" fill="#e0e0e0"/>
-          <circle cx="22" cy="22" r="8" fill="#e5e5e5"/>
-        </svg>`
+            <rect width="100%" height="100%" fill="#f2f2f2"/>
+            <path d="M10 52 L28 34 L40 46 L52 34 L62 44 L62 62 L10 62 Z" fill="#e0e0e0"/>
+            <circle cx="22" cy="22" r="8" fill="#e5e5e5"/>
+          </svg>`
         );
 
       // --- helpers ---
@@ -160,78 +176,10 @@
         return arr.slice().sort((a, b) => new Date(a.date) - new Date(b.date));
       }
 
-      // Drag-to-scroll on container
-      function enableDragScroll(scroller) {
-        let isDown = false;
-        let startX = 0;
-        let startScrollLeft = 0;
-        let isDraggingInternal = false;
-        const DRAG_THRESHOLD = 3;
-
-        const setTooltipEnabled = (enabled) => {
-          if (!chartInstance) return;
-          chartInstance.options.plugins.tooltip =
-            chartInstance.options.plugins.tooltip || {};
-          chartInstance.options.plugins.tooltip.enabled = enabled;
-          chartInstance.update("none");
-        };
-
-        scroller.addEventListener(
-          "pointerdown",
-          (e) => {
-            if (e.pointerType === "mouse" && e.button !== 0) return;
-            isDown = true;
-            isDraggingInternal = false;
-            startX = e.clientX;
-            startScrollLeft = scroller.scrollLeft;
-            scroller.classList.add("dragging");
-            containerDragging = true;
-            scroller.setPointerCapture?.(e.pointerId);
-          },
-          { passive: true }
-        );
-
-        scroller.addEventListener(
-          "pointermove",
-          (e) => {
-            if (!isDown) return;
-            const dx = e.clientX - startX;
-            if (!isDraggingInternal && Math.abs(dx) > DRAG_THRESHOLD) {
-              isDraggingInternal = true;
-              setTooltipEnabled(false); // prevent flicker
-              // clear any programmatic tooltip
-              if (chartInstance) {
-                chartInstance.setActiveElements([]);
-                chartInstance.tooltip.setActiveElements([], { x: 0, y: 0 });
-                chartInstance.$hoverIndex = null;
-                chartInstance.update("none");
-              }
-            }
-            if (isDraggingInternal) {
-              e.preventDefault();
-              scroller.scrollLeft = startScrollLeft - dx;
-            }
-          },
-          { passive: false }
-        );
-
-        const endDrag = (e) => {
-          if (!isDown) return;
-          isDown = false;
-          scroller.classList.remove("dragging");
-          containerDragging = false;
-          scroller.releasePointerCapture?.(e.pointerId);
-          setTooltipEnabled(true);
-        };
-        scroller.addEventListener("pointerup", endDrag, { passive: true });
-        scroller.addEventListener("pointerleave", endDrag, { passive: true });
-        scroller.addEventListener("pointercancel", endDrag, { passive: true });
-      }
-
       // --- vertical hover line plugin for tooltip alignment ---
       const vlineHoverPlugin = {
         id: "vlineHover",
-        afterDatasetsDraw(chart, args, pluginOptions) {
+        afterDatasetsDraw(chart) {
           const idx = chart.$hoverIndex;
           if (idx == null) return;
           const {
@@ -251,37 +199,29 @@
           ctx.restore();
         },
       };
-      if (window.Chart) {
-        Chart.register(vlineHoverPlugin);
-        // If your zoom plugin isn't auto-registered by the CDN, uncomment:
-        // if (window.ChartZoom) Chart.register(window.ChartZoom);
-      }
+      if (window.Chart) Chart.register(vlineHoverPlugin);
 
       // Show tooltip when pointer is aligned with an X tick/label (any Y)
       function enableAxisHoverTooltip(chart) {
         const canvas = chart.canvas;
         const xScale = chart.scales.x;
 
-        // Use property handlers to avoid duplicate listeners across chart re-creations
         canvas.onmousemove = (e) => {
-          if (!xScale || containerDragging) return;
+          if (!xScale) return;
           const rect = canvas.getBoundingClientRect();
           const x = e.clientX - rect.left;
 
           let idx = xScale.getValueForPixel(x);
           if (idx == null || Number.isNaN(idx)) return;
 
-          // category scale returns index; ensure integer & within bounds
           idx = Math.round(idx);
           idx = Math.max(0, Math.min(idx, chart.data.labels.length - 1));
 
-          // Build active elements for all datasets at this index
           const elements = chart.data.datasets.map((_, di) => ({
             datasetIndex: di,
             index: idx,
           }));
 
-          // Position tooltip near the top at this x (so it's visible even if pointer is on the axis)
           const vp = {
             x: xScale.getPixelForValue(idx),
             y: chart.scales.y?.top ?? chart.chartArea.top,
@@ -354,7 +294,7 @@
           options: {
             responsive: true,
             maintainAspectRatio: false,
-            interaction: { mode: "index", intersect: false, axis: "x" }, // normal hover anywhere in chart area
+            interaction: { mode: "index", intersect: false, axis: "x" },
             plugins: {
               legend: {
                 labels: {
@@ -374,9 +314,9 @@
                 font: { size: 18 },
               },
               zoom: {
-                pan: { enabled: false, mode: "x" }, // disable pan to avoid fighting with container drag
+                pan: { enabled: false, mode: "x" },
                 zoom: {
-                  wheel: { enabled: true, modifierKey: "ctrl" }, // require Ctrl to zoom with wheel
+                  wheel: { enabled: true, modifierKey: "ctrl" },
                   pinch: { enabled: true },
                   mode: "x",
                 },
@@ -422,7 +362,7 @@
         }
       }
 
-      // --- news list ---
+      // --- news list (now with sentiment colors) ---
       function renderNewsList(items, append = false) {
         const list = document.getElementById("newsList");
         const loadMoreBtn = document.getElementById("loadMoreBtn");
@@ -452,6 +392,17 @@
           const sentiment = n.sentiment || "";
           const imgSrc = n.image_link || PLACEHOLDER_SVG;
 
+          // sentiment -> class
+          const sKey = (sentiment || "").toLowerCase();
+          const sentimentClass =
+            sKey === "positive"
+              ? "sentiment-positive"
+              : sKey === "neutral"
+              ? "sentiment-neutral"
+              : sKey === "negative"
+              ? "sentiment-negative"
+              : "sentiment-unknown";
+
           const item = document.createElement("div");
           item.className = "news-item";
           item.innerHTML = `
@@ -464,7 +415,11 @@
               <div class="news-meta">
                 <span>${date ? new Date(date).toLocaleString() : ""}</span>
                 ${source ? ` • <span>${source}</span>` : ""}
-                ${sentiment ? ` <span class="badge">${sentiment}</span>` : ""}
+                ${
+                  sentiment
+                    ? ` <span class="badge ${sentimentClass}">${sentiment}</span>`
+                    : ""
+                }
               </div>
             </div>
           `;
@@ -590,21 +545,10 @@
             .forEach((b) => b.classList.remove("active"));
           allBtn.classList.add("active");
 
-          // Downsample to weekly (chronological)
           const weekData = [];
           let lastWeekKey = null;
           const sortedAll = sortByDateAsc(allData);
-          sortedAll.forEach((item) => {
-            const d = new Date(item.date);
-            const key = `${d.getFullYear()}-M${d.getMonth() + 1}-W${Math.ceil(
-              d.getDate() / 7
-            )}`;
-            if (key !== lastWeekKey) {
-              weekData.push(item);
-              lastWeekKey = key;
-            }
-          });
-          renderChart(weekData, "All Months (Weekly)");
+          renderChart(sortedAll, "All Months");
 
           currentMonth = null;
           nextPageUrl = null;
@@ -638,9 +582,6 @@
           document.getElementById("newsTitle").textContent = "Latest News";
           await fetchLatestNews();
         });
-
-      // Enable drag-to-scroll
-      enableDragScroll(document.querySelector(".chart-container"));
     </script>
   </body>
 </html>
