@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Sentiment Chart</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  </head>
+  <body>
+    <h2>Sentiment Statistics Per Month</h2>
+    <canvas id="sentimentChart" width="800" height="400"></canvas>
+    <script>
+      fetch("/api/dashboard/sentiment-stats/")
+        .then((response) => response.json())
+        .then((data) => {
+          // Only show month label in the middle of each group
+          const labels = data.map((item) => {
+            const [year, month] = item.date.split("-");
+            return `${year}-${month}`;
+          });
+
+          // Find indices where the month changes
+          const monthIndices = [];
+          let prevMonth = labels[0];
+          labels.forEach((label, idx) => {
+            if (label !== prevMonth) {
+              monthIndices.push(Math.floor((idx + monthIndices[monthIndices.length - 1] || 0) / 2));
+              prevMonth = label;
+            }
+          });
+          // Add last group
+          if (labels.length > 0) {
+            const lastMonth = labels[labels.length - 1];
+            const lastIdx = labels.lastIndexOf(lastMonth);
+            const firstIdx = labels.indexOf(lastMonth);
+            monthIndices.push(Math.floor((firstIdx + lastIdx) / 2));
+          }
+
+          // Set all labels to empty except the middle index of each month
+          const displayLabels = labels.map((label, idx) => {
+            return monthIndices.includes(idx) ? label : "";
+          });
+
+          const positive = data.map((item) => item.positive);
+          const neutral = data.map((item) => item.neutral);
+          const negative = data.map((item) => item.negative);
+
+          const ctx = document
+            .getElementById("sentimentChart")
+            .getContext("2d");
+          new Chart(ctx, {
+            type: "bar",
+            data: {
+              labels: displayLabels,
+              datasets: [
+                {
+                  label: "Positive",
+                  data: positive,
+                  backgroundColor: "rgba(40, 167, 69, 0.7)",
+                  borderColor: "rgba(40, 167, 69, 1)",
+                  borderWidth: 1,
+                },
+                {
+                  label: "Neutral",
+                  data: neutral,
+                  backgroundColor: "rgba(108, 117, 125, 0.7)",
+                  borderColor: "rgba(108, 117, 125, 1)",
+                  borderWidth: 1,
+                },
+                {
+                  label: "Negative",
+                  data: negative,
+                  backgroundColor: "rgba(220, 53, 69, 0.7)",
+                  borderColor: "rgba(220, 53, 69, 1)",
+                  borderWidth: 1,
+                },
+              ],
+            },
+            options: {
+              responsive: true,
+              plugins: {
+                legend: {
+                  labels: {
+                    color: "#343a40",
+                    font: {
+                      size: 16,
+                      family: "Helvetica Neue, Arial, sans-serif",
+                      weight: "bold",
+                    },
+                  },
+                },
+              },
+              scales: {
+                x: {
+                  stacked: true,
+                  title: {
+                    display: true,
+                    text: "Month",
+                    color: "#343a40",
+                    font: { size: 14 },
+                  },
+                },
+                y: {
+                  stacked: true,
+                  beginAtZero: true,
+                  title: {
+                    display: true,
+                    text: "Count",
+                    color: "#343a40",
+                    font: { size: 14 },
+                  },
+                },
+              },
+            },
+          });
+        });
+    </script>
+  </body>
+</html>
