@@ -15,6 +15,18 @@ services:
       - POSTGRES_HOST=db
     depends_on:
       - db
+  scheduler:
+    build: .
+    command: >
+      sh -c "
+        while true; do
+          python manage.py sync_cnbc_rss --limit 50 || true;
+          sleep 300;  # every 5 minutes
+        done
+      "
+    depends_on:
+      - db
+    restart: unless-stopped
   db:
     image: postgres:16
     environment:
