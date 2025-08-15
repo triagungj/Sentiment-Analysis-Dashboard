@@ -26,6 +26,19 @@ SECRET_KEY = 'django-insecure-=jwn3lujsc&7$ki@$xro88%q_%v#kchbu)bfso7ce0g%z=$i2q
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = False
 
+# Tell Django how to detect HTTPS when behind a proxy
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+
+# If you generate absolute URLs, also respect the forwarded host
+USE_X_FORWARDED_HOST = True
+
+# Redirect all HTTP to HTTPS (once TLS & proxy are correct)
+SECURE_SSL_REDIRECT = True
+
+# Secure cookies over HTTPS
+SESSION_COOKIE_SECURE = True
+CSRF_COOKIE_SECURE = True
+
 CSRF_TRUSTED_ORIGINS = [
     "https://sentiment.triagungj.com",
     # add more if needed
