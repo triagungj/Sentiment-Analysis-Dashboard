@@ -11,7 +11,8 @@ class News(models.Model):
     ]
 
     news_source = models.ForeignKey(
-        "api.NewsSource", on_delete=models.CASCADE, related_name="news_items"
+        "api.NewsSource", on_delete=models.CASCADE, related_name="news_items", 
+        null=True, blank=True
     )
     title = models.CharField(max_length=255)
     date = models.DateField()
