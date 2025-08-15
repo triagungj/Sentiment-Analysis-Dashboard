@@ -20,5 +20,5 @@ urlpatterns = [
     path("admin/", admin.site.urls),
     path("api/", include("api.urls")),  
     path("api/docs/", schema_view.with_ui("swagger", cache_timeout=0), name="swagger-ui"),
-    path('chart/', sentiment_chart_page, name='sentiment-chart-page'),
+    path("", sentiment_chart_page, name='sentiment-chart-page'),
 ]
