@@ -32,46 +32,84 @@ def _pubdate(entry):
     except Exception:
         return None
 
-def fetch_cnbc_market_and_predict_sync(limit=50):
+
+def fetch_cnbc_market_and_predict_sync(limit=50, backfill_existing=False):
     """
-    Parse CNBC Market RSS and INSERT ONLY NEW items into News.
-    Dedup key: link (stable in CNBC RSS).
-    Returns dict: {"inserted": N, "skipped": M}
+    Insert ONLY NEW items from CNBC Market RSS.
+    Dedup key: link.
+    Predict sentiment ONLY for new items.
+    If backfill_existing=True, also fill sentiment for existing rows with missing sentiment/score.
+    Returns: {"inserted": N, "updated": M, "skipped": K}
     """
     feed = feedparser.parse(FEED_URL)
     entries = feed.entries[:limit]
 
-    # Build rows we WANT to insert
-    rows = []
+    # 1) Pre-parse minimal fields (no prediction yet)
+    parsed = []
     for e in entries:
-        title = (e.get("title") or "").strip()
-        link  = e.get("link") or ""
+        link = e.get("link") or ""
         if not link:
-            continue  # skip if no link (rare)
-        published_at = _pubdate(e)
-        image_url = _first_image(e)
-        sentiment = predict_sentiment(title)
-        
+            continue
+        parsed.append({
+            "link": link,
+            "title": (e.get("title") or "").strip(),
+            "date": _pubdate(e),              # <- rename to published_at if your model uses that
+            "image_link": _first_image(e),    # <- keep your field name
+        })
 
-        rows.append(dict(
-            title=title,
-            link=link,
-            image_link=image_url,
-            date=published_at,
-            sentiment=sentiment.get("label", ""),
-            sentiment_score=sentiment.get("confidence", 0.0),
-        ))
+    if not parsed:
+        return {"inserted": 0, "updated": 0, "skipped": 0}
 
-    # Dedup against DB by link
-    wanted_links = [r["link"] for r in rows]
-    existing = set(
-        News.objects.filter(link__in=wanted_links).values_list("link", flat=True)
-    )
+    # 2) Check what already exists
+    wanted_links = [p["link"] for p in parsed]
+    existing_qs = (News.objects
+        .filter(link__in=wanted_links)
+        .only("id", "link", "title", "date", "image_link", "sentiment", "sentiment_score"))
+    existing_by_link = {n.link: n for n in existing_qs}
 
-    to_create = [News(**r) for r in rows if r["link"] not in existing]
+    to_create = []
+    to_update = []
 
+    # 3) Build create/update sets, predicting ONLY when needed
+    for p in parsed:
+        n = existing_by_link.get(p["link"])
+        if n:
+            if backfill_existing:
+                needs_sentiment = (not n.sentiment) or (n.sentiment_score is None)
+                changed_meta = (
+                    (n.title != p["title"]) or
+                    (n.date != p["date"]) or
+                    (getattr(n, "image_link", None) != p["image_link"])
+                )
+                if needs_sentiment:
+                    pred = predict_sentiment(p["title"])
+                    n.sentiment = pred.get("label")
+                    n.sentiment_score = pred.get("confidence")
+                if needs_sentiment or changed_meta:
+                    n.title = p["title"]
+                    n.date = p["date"]
+                    n.image_link = p["image_link"]
+                    to_update.append(n)
+            # else: skip silently
+            continue
+
+        # New row: now we predict
+        pred = predict_sentiment(p["title"])
+        p["sentiment"] = pred.get("label")
+        p["sentiment_score"] = pred.get("confidence")
+        to_create.append(News(**p))
+
+    # 4) Commit
     with transaction.atomic():
         if to_create:
             News.objects.bulk_create(to_create)
+        if to_update:
+            News.objects.bulk_update(
+                to_update,
+                ["title", "date", "image_link", "sentiment", "sentiment_score"]
+            )
 
-    return {"inserted": len(to_create), "skipped": len(rows) - len(to_create)}
+    inserted = len(to_create)
+    updated = len(to_update)
+    skipped = len(parsed) - inserted - updated
+    return {"inserted": inserted, "updated": updated, "skipped": skipped}
