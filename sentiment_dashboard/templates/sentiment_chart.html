@@ -652,7 +652,15 @@
             <div class="news-content">
               <h4><a href="${url}" target="_blank" rel="noopener noreferrer">${title}</a></h4>
               <div class="news-meta">
-                <span>${date ? new Date(date).toLocaleString() : ""}</span>
+                <span>${
+                  date
+                    ? new Date(date).toLocaleDateString("id-ID", {
+                        day: "numeric",
+                        month: "long",
+                        year: "numeric",
+                      })
+                    : ""
+                }</span>
                 ${source ? ` • <span>${source}</span>` : ""}
                 ${
                   sentiment
