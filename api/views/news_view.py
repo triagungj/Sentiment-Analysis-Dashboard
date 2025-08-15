@@ -4,6 +4,7 @@ from calendar import monthrange
 from rest_framework import viewsets, permissions, filters, status
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
+from rest_framework.decorators import action
 
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
@@ -13,6 +14,7 @@ from django.utils.timezone import make_aware
 from api.models.news_model import News, NewsReadSerializer, NewsWriteSerializer
 from api.services.sentiment import predict_sentiment
 
+from api.services.rss_ingest import fetch_cnbc_market_and_predict_sync
 
 
 
@@ -92,6 +94,15 @@ class NewsViewSet(viewsets.ModelViewSet):
         instance.sentiment_score = result["confidence"]
         instance.save()
         print(f"Predicted sentiment: {result['label']} (confidence: {result['confidence']})")
+    
+    @action(detail=False, methods=["post"], url_path="refresh-rss")
+    def refresh_rss(self, request):
+        try:
+            limit = int(request.data.get("limit", 50))
+        except Exception:
+            limit = 50
+        created, updated = fetch_cnbc_market_and_predict_sync(limit=limit)
+        return Response({"created": created, "updated": updated}, status=status.HTTP_200_OK)
 
     # ---- Swagger docs (adds params to the existing list endpoint) ----
     @swagger_auto_schema(

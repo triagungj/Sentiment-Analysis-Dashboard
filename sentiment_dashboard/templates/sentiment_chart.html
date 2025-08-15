@@ -130,15 +130,43 @@
         font-style: italic;
         margin-top: 6px;
       }
-      .btn-primary {
-        margin: 0 0 32px;
+      .header-bar {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 12px;
+      }
+      .header-actions {
+        display: flex;
+        gap: 8px;
+      }
+      .btn-primary,
+      .btn-secondary {
         padding: 8px 14px;
-        border: 1px solid #2563eb;
-        background: #ffffff;
-        color: #2563eb;
+        border: 1px solid #ccc;
         border-radius: 6px;
         cursor: pointer;
-        font-size: 14px;
+        background: #f8f9fa;
+      }
+      .btn-primary {
+        background: #007bff;
+        color: white;
+        border-color: #007bff;
+      }
+      .btn-primary[disabled] {
+        opacity: 0.7;
+        cursor: not-allowed;
+      }
+      .toast {
+        position: fixed;
+        right: 16px;
+        bottom: 16px;
+        background: #222;
+        color: #fff;
+        padding: 10px 14px;
+        border-radius: 6px;
+        display: none;
       }
 
       /* Dialog base */
@@ -268,13 +296,17 @@
     </style>
   </head>
   <body>
-    <h2>Stock News Sentiment Analysis - CNBC Indonesia</h2>
-
-    <!-- Trigger button - place this under your page title or toolbar -->
-    <button id="openPredictDialogBtn" class="btn-primary">
-      Try Predict Sentiment
-    </button>
-
+    <div class="header-bar">
+      <h2>Stock News Sentiment Analysis - CNBC Indonesia</h2>
+      <div class="header-actions">
+        <button id="refreshRssBtn" class="btn-primary">
+          ↻ Refresh from RSS
+        </button>
+        <button id="openPredictDialogBtn" class="btn-secondary">
+          Open Sentiment Predictor
+        </button>
+      </div>
+    </div>
     <!-- Sentiment Predictor Dialog -->
     <dialog id="predictDialog" aria-labelledby="predictDialogTitle">
       <div class="dialog-surface">
@@ -888,6 +920,78 @@
           statusEl.textContent = "";
         }
       });
+    </script>
+
+    <script>
+      // --- CSRF helper (Django) ---
+      function getCookie(name) {
+        const value = `; ${document.cookie}`;
+        const parts = value.split(`; ${name}=`);
+        if (parts.length === 2)
+          return decodeURIComponent(parts.pop().split(";").shift());
+      }
+
+      const refreshBtn = document.getElementById("refreshRssBtn");
+
+      function setRefreshing(isLoading) {
+        if (!refreshBtn) return;
+        refreshBtn.disabled = isLoading;
+        refreshBtn.textContent = isLoading
+          ? "Refreshing..."
+          : "↻ Refresh from RSS";
+      }
+
+      function showToast(msg) {
+        let el = document.getElementById("appToast");
+        if (!el) {
+          el = document.createElement("div");
+          el.id = "appToast";
+          el.className = "toast";
+          document.body.appendChild(el);
+        }
+        el.textContent = msg;
+        el.style.display = "block";
+        setTimeout(() => {
+          el.style.display = "none";
+        }, 3000);
+      }
+
+      async function refreshFromRss(limit = 50) {
+        setRefreshing(true);
+        try {
+          const resp = await fetch("/api/news/refresh-rss/", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "X-CSRFToken": getCookie("csrftoken") || "",
+            },
+            body: JSON.stringify({ limit }),
+          });
+          if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+          const data = await resp.json();
+          showToast(`Synced ✓  New: ${data.created}, Updated: ${data.updated}`);
+          // Optional: reload your chart/data here
+          if (typeof reloadChartData === "function") {
+            await reloadChartData();
+          }
+        } catch (err) {
+          console.error(err);
+          showToast("Refresh failed. Check logs.");
+        } finally {
+          setRefreshing(false);
+        }
+      }
+
+      if (refreshBtn) {
+        refreshBtn.addEventListener("click", () => refreshFromRss(50));
+      }
+
+      // Example stub; replace with your real data reload logic
+      async function reloadChartData() {
+        // e.g., const r = await fetch("/api/news/?ordering=-published_at&limit=200");
+        // const json = await r.json();
+        // updateChart(json.results);
+      }
     </script>
   </body>
 </html>
