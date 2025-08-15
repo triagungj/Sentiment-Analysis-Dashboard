@@ -307,6 +307,7 @@
         </button>
       </div>
     </div>
+
     <!-- Sentiment Predictor Dialog -->
     <dialog id="predictDialog" aria-labelledby="predictDialogTitle">
       <div class="dialog-surface">
@@ -322,7 +323,6 @@
           </button>
         </div>
 
-        <!-- —— The original Predict Sentiment card goes here —— -->
         <div class="predict-card">
           <form id="predictForm">
             <label for="predictText" class="sr-only">Text to analyze</label>
@@ -346,8 +346,10 @@
       </div>
     </dialog>
 
+    <!-- Month filter -->
     <div class="month-filter" id="monthFilter"></div>
 
+    <!-- Chart -->
     <div class="chart-container">
       <canvas id="sentimentChart" width="1600" height="400"></canvas>
     </div>
@@ -362,18 +364,26 @@
     </div>
 
     <script>
+      // --------------------------
+      // Config – update if needed
+      // --------------------------
+      const API_SENTIMENT_STATS = "/api/dashboard/sentiment-stats/";
+      const API_NEWS_BASE = "/api/news/";
+      const API_NEWS_REFRESH = "/api/news/refresh-rss/";
+      const API_PREDICT = "/api/predict/";
+
+      // --------------------------
+      // State
+      // --------------------------
       let chartInstance = null;
       let allData = [];
       let months = [];
-
-      // Pagination & safety
-      let currentMonth = null; // null = "All"
+      let currentMonth = null;
       let nextPageUrl = null;
       let isLoading = false;
       const visitedNext = new Set();
       let inFlight = null; // AbortController
 
-      // Placeholder image
       const PLACEHOLDER_SVG =
         "data:image/svg+xml;utf8," +
         encodeURIComponent(
@@ -384,12 +394,32 @@
           </svg>`
         );
 
-      // --- helpers ---
+      // --------------------------
+      // Utilities
+      // --------------------------
+      function getCookie(name) {
+        const value = `; ${document.cookie}`;
+        const parts = value.split(`; ${name}=`);
+        if (parts.length === 2)
+          return decodeURIComponent(parts.pop().split(";").shift());
+      }
+
       function sortByDateAsc(arr) {
         return arr.slice().sort((a, b) => new Date(a.date) - new Date(b.date));
       }
 
-      // --- vertical hover line plugin for tooltip alignment ---
+      function dayKeyFromISO(iso) {
+        if (!iso) return null;
+        const d = new Date(iso);
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, "0");
+        const dd = String(d.getDate()).padStart(2, "0");
+        return `${y}-${m}-${dd}`;
+      }
+
+      // --------------------------
+      // Vertical hover line plugin
+      // --------------------------
       const vlineHoverPlugin = {
         id: "vlineHover",
         afterDatasetsDraw(chart) {
@@ -414,7 +444,6 @@
       };
       if (window.Chart) Chart.register(vlineHoverPlugin);
 
-      // Show tooltip when pointer is aligned with an X tick/label (any Y)
       function enableAxisHoverTooltip(chart) {
         const canvas = chart.canvas;
         const xScale = chart.scales.x;
@@ -434,7 +463,6 @@
             datasetIndex: di,
             index: idx,
           }));
-
           const vp = {
             x: xScale.getPixelForValue(idx),
             y: chart.scales.y?.top ?? chart.chartArea.top,
@@ -454,22 +482,22 @@
         };
       }
 
-      // --- chart ---
+      // --------------------------
+      // Chart building
+      // --------------------------
       function renderChart(filteredData, monthLabel) {
-        // Ensure chronological order so NEWEST is on the RIGHT
         const sorted = sortByDateAsc(filteredData);
-
         const labels = sorted.map((item) => item.date);
         const positive = sorted.map((item) => item.positive);
         const neutral = sorted.map((item) => item.neutral);
         const negative = sorted.map((item) => item.negative);
 
-        // dynamic width
         const chartCanvas = document.getElementById("sentimentChart");
         chartCanvas.width = Math.max(1600, labels.length * 20);
 
         const ctx = chartCanvas.getContext("2d");
         if (chartInstance) chartInstance.destroy();
+
         chartInstance = new Chart(ctx, {
           type: "line",
           data: {
@@ -560,10 +588,8 @@
           },
         });
 
-        // enable tooltip-on-label behavior + vertical hover line
         enableAxisHoverTooltip(chartInstance);
 
-        // focus latest month range (except weekly-all scenario)
         if (labels.length > 0 && monthLabel !== "All Months (Weekly)") {
           const latestMonth = labels[labels.length - 1].slice(0, 7);
           const startIdx = labels.findIndex(
@@ -575,7 +601,9 @@
         }
       }
 
-      // --- news list (now with sentiment colors) ---
+      // --------------------------
+      // News list rendering
+      // --------------------------
       function renderNewsList(items, append = false) {
         const list = document.getElementById("newsList");
         const loadMoreBtn = document.getElementById("loadMoreBtn");
@@ -602,10 +630,9 @@
           const url = n.url || n.link || "#";
           const date = n.published_at || n.created_at || n.date || "";
           const source = n.source?.name || n.source || "";
-          const sentiment = n.sentiment || "";
-          const imgSrc = n.image_link || PLACEHOLDER_SVG;
+          const sentiment = n.sentiment || n.sentiment_label || "";
+          const imgSrc = n.image_link || n.image_url || PLACEHOLDER_SVG;
 
-          // sentiment -> class
           const sKey = (sentiment || "").toLowerCase();
           const sentimentClass =
             sKey === "positive"
@@ -620,8 +647,7 @@
           item.className = "news-item";
           item.innerHTML = `
             <div class="thumb">
-              <img loading="lazy" src="${imgSrc}" alt=""
-                   onerror="this.onerror=null;this.src='${PLACEHOLDER_SVG}';">
+              <img loading="lazy" src="${imgSrc}" alt="" onerror="this.onerror=null;this.src='${PLACEHOLDER_SVG}';">
             </div>
             <div class="news-content">
               <h4><a href="${url}" target="_blank" rel="noopener noreferrer">${title}</a></h4>
@@ -646,7 +672,9 @@
         loadMoreBtn.textContent = hasNext ? "Load more" : "No more";
       }
 
-      // --- fetch helpers with loop protection ---
+      // --------------------------
+      // Fetch helpers (pagination)
+      // --------------------------
       function resetInFlight() {
         if (inFlight) inFlight.abort();
         inFlight = new AbortController();
@@ -704,7 +732,7 @@
         append = false
       ) {
         const signal = resetInFlight();
-        const base = `/api/news/?month=${encodeURIComponent(month)}`;
+        const base = `${API_NEWS_BASE}?month=${encodeURIComponent(month)}`;
         const url = urlOverride || base;
         inFlight.signal = signal;
         await fetchPaged(url, append);
@@ -712,13 +740,15 @@
 
       async function fetchLatestNews(urlOverride = null, append = false) {
         const signal = resetInFlight();
-        const base = `/api/news/`; // relies on newest-first backend ordering
+        const base = `${API_NEWS_BASE}`; // newest-first backend
         const url = urlOverride || base;
         inFlight.signal = signal;
         await fetchPaged(url, append);
       }
 
-      // --- UI wiring ---
+      // --------------------------
+      // Month buttons
+      // --------------------------
       function renderMonthButtons() {
         const filterDiv = document.getElementById("monthFilter");
         filterDiv.innerHTML = "";
@@ -748,7 +778,6 @@
           filterDiv.appendChild(btn);
         });
 
-        // "All" button
         const allBtn = document.createElement("button");
         allBtn.textContent = "All";
         allBtn.classList.add("active");
@@ -758,11 +787,7 @@
             .forEach((b) => b.classList.remove("active"));
           allBtn.classList.add("active");
 
-          const weekData = [];
-          let lastWeekKey = null;
-          const sortedAll = sortByDateAsc(allData);
-          renderChart(sortedAll, "All Months");
-
+          renderChart(allData, "All Months");
           currentMonth = null;
           nextPageUrl = null;
           visitedNext.clear();
@@ -772,66 +797,80 @@
         filterDiv.insertBefore(allBtn, filterDiv.firstChild);
       }
 
-      document
-        .getElementById("loadMoreBtn")
-        .addEventListener("click", async () => {
-          if (!nextPageUrl || isLoading) return;
-          if (currentMonth) {
-            await fetchNewsByMonth(currentMonth, nextPageUrl, true);
-          } else {
-            await fetchLatestNews(nextPageUrl, true);
-          }
-        });
+      // --------------------------
+      // Initial load
+      // --------------------------
+      async function init() {
+        const statsResp = await fetch(API_SENTIMENT_STATS);
+        const stats = await statsResp.json();
+        allData = stats.map((x) => ({ ...x, date: x.date }));
+        months = [...new Set(allData.map((x) => x.date.slice(0, 7)))];
 
-      // --- initial load ---
-      fetch("/api/dashboard/sentiment-stats/")
-        .then((response) => response.json())
-        .then(async (data) => {
-          allData = data.map((item) => ({ ...item, date: item.date }));
-          months = [...new Set(data.map((item) => item.date.slice(0, 7)))];
-          renderMonthButtons();
+        renderMonthButtons();
+        renderChart(allData, "All Months");
+        document.getElementById("newsTitle").textContent = "Latest News";
+        await fetchLatestNews();
+      }
 
+      // --------------------------
+      // Reload chart data (after refresh)
+      // --------------------------
+      async function reloadChartData({ scrollToTop = true } = {}) {
+        // 0) cancel anything in-flight and reset pagination state
+        if (inFlight) {
+          try {
+            inFlight.abort();
+          } catch (_) {}
+        }
+        inFlight = null;
+        nextPageUrl = null;
+        visitedNext.clear();
+        isLoading = false;
+
+        // 1) re-fetch sentiment stats and rebuild month buttons
+        const statsResp = await fetch(API_SENTIMENT_STATS);
+        const stats = await statsResp.json();
+        allData = stats.map((x) => ({ ...x, date: x.date }));
+        months = [...new Set(allData.map((x) => x.date.slice(0, 7)))];
+
+        renderMonthButtons();
+
+        // 2) re-render chart + reload the LIST (first page) based on current filter
+        if (currentMonth) {
+          const filtered = allData.filter((item) =>
+            item.date.startsWith(currentMonth)
+          );
+          renderChart(filtered, currentMonth);
+          document.getElementById(
+            "newsTitle"
+          ).textContent = `News — ${currentMonth}`;
+          await fetchNewsByMonth(currentMonth); // <- refresh list for that month
+        } else {
           renderChart(allData, "All Months");
           document.getElementById("newsTitle").textContent = "Latest News";
-          await fetchLatestNews();
-        });
-
-      // —— Your existing constant; adjust if your API path differs ——
-      const PREDICT_URL = "/api/predict/";
-
-      // CSRF helper (Django docs)
-      function getCookie(name) {
-        let cookieValue = null;
-        if (document.cookie && document.cookie !== "") {
-          const cookies = document.cookie.split(";");
-          for (let i = 0; i < cookies.length; i++) {
-            const cookie = cookies[i].trim();
-            if (cookie.substring(0, name.length + 1) === name + "=") {
-              cookieValue = decodeURIComponent(
-                cookie.substring(name.length + 1)
-              );
-              break;
-            }
-          }
+          await fetchLatestNews(); // <- refresh latest list
         }
-        return cookieValue;
-      }
-      const csrftoken = getCookie("csrftoken");
 
-      // Dialog wiring
+        // 3) nice UX: bring the list into view (optional)
+        if (scrollToTop) {
+          document
+            .getElementById("newsTitle")
+            ?.scrollIntoView({ behavior: "smooth", block: "start" });
+        }
+      }
+
+      // --------------------------
+      // Predict dialog
+      // --------------------------
       const openBtn = document.getElementById("openPredictDialogBtn");
       const dialog = document.getElementById("predictDialog");
       const closeBtn = document.getElementById("closePredictDialogBtn");
 
       openBtn.addEventListener("click", () => {
         dialog.showModal();
-        // focus textarea when opened
         setTimeout(() => document.getElementById("predictText")?.focus(), 0);
       });
-
       closeBtn.addEventListener("click", () => dialog.close());
-
-      // Close on click outside (backdrop)
       dialog.addEventListener("click", (e) => {
         const rect = dialog.getBoundingClientRect();
         const inDialog =
@@ -841,17 +880,14 @@
           e.clientY <= rect.bottom;
         if (!inDialog) dialog.close();
       });
-
-      // ESC cancels by default; but we ensure no form submits close the dialog unexpectedly
       dialog.addEventListener("cancel", (e) => {
-        e.preventDefault(); // keep consistent close behavior
+        e.preventDefault();
         dialog.close();
       });
 
-      // Predictor form behavior (same logic as before)
       const form = document.getElementById("predictForm");
       const textarea = document.getElementById("predictText");
-      const btn = document.getElementById("predictBtn");
+      const predictBtn = document.getElementById("predictBtn");
       const statusEl = document.getElementById("predictStatus");
       const resultEl = document.getElementById("predictResult");
       const labelEl = document.getElementById("predictLabel");
@@ -882,28 +918,25 @@
           return;
         }
 
-        btn.disabled = true;
+        predictBtn.disabled = true;
         statusEl.textContent = "Predicting…";
 
         try {
-          const resp = await fetch(PREDICT_URL, {
+          const resp = await fetch(API_PREDICT, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
-              "X-CSRFToken": csrftoken,
+              "X-CSRFToken": getCookie("csrftoken") || "",
             },
             body: JSON.stringify({ text }),
           });
-
           if (!resp.ok) {
             const err = await resp.json().catch(() => ({}));
             throw new Error(
               err.detail || err.error || `Request failed (${resp.status})`
             );
           }
-
           const data = await resp.json();
-          // Expect: { label: "positive|neutral|negative", score: 0..1 }
           setBadge(data.label);
           const score =
             typeof data.score === "number"
@@ -916,31 +949,21 @@
           errorEl.textContent = err.message || "Prediction failed.";
           errorEl.style.display = "block";
         } finally {
-          btn.disabled = false;
+          predictBtn.disabled = false;
           statusEl.textContent = "";
         }
       });
-    </script>
 
-    <script>
-      // --- CSRF helper (Django) ---
-      function getCookie(name) {
-        const value = `; ${document.cookie}`;
-        const parts = value.split(`; ${name}=`);
-        if (parts.length === 2)
-          return decodeURIComponent(parts.pop().split(";").shift());
-      }
-
+      // --------------------------
+      // Refresh button
+      // --------------------------
       const refreshBtn = document.getElementById("refreshRssBtn");
-
       function setRefreshing(isLoading) {
-        if (!refreshBtn) return;
         refreshBtn.disabled = isLoading;
         refreshBtn.textContent = isLoading
           ? "Refreshing..."
           : "↻ Refresh from RSS";
       }
-
       function showToast(msg) {
         let el = document.getElementById("appToast");
         if (!el) {
@@ -955,11 +978,10 @@
           el.style.display = "none";
         }, 3000);
       }
-
       async function refreshFromRss(limit = 50) {
         setRefreshing(true);
         try {
-          const resp = await fetch("/api/news/refresh-rss/", {
+          const resp = await fetch(API_NEWS_REFRESH, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
@@ -969,11 +991,12 @@
           });
           if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
           const data = await resp.json();
-          showToast(`Synced ✓  New: ${data.created}, Updated: ${data.updated}`);
-          // Optional: reload your chart/data here
-          if (typeof reloadChartData === "function") {
-            await reloadChartData();
-          }
+          showToast(
+            `Synced ✓  New: ${data.created ?? data.inserted ?? 0}, Updated: ${
+              data.updated ?? data.skipped ?? 0
+            }`
+          );
+          await reloadChartData();
         } catch (err) {
           console.error(err);
           showToast("Refresh failed. Check logs.");
@@ -981,17 +1004,24 @@
           setRefreshing(false);
         }
       }
+      refreshBtn.addEventListener("click", () => refreshFromRss(50));
 
-      if (refreshBtn) {
-        refreshBtn.addEventListener("click", () => refreshFromRss(50));
-      }
+      // --------------------------
+      // Load more button
+      // --------------------------
+      document
+        .getElementById("loadMoreBtn")
+        .addEventListener("click", async () => {
+          if (!nextPageUrl || isLoading) return;
+          if (currentMonth) {
+            await fetchNewsByMonth(currentMonth, nextPageUrl, true);
+          } else {
+            await fetchLatestNews(nextPageUrl, true);
+          }
+        });
 
-      // Example stub; replace with your real data reload logic
-      async function reloadChartData() {
-        // e.g., const r = await fetch("/api/news/?ordering=-published_at&limit=200");
-        // const json = await r.json();
-        // updateChart(json.results);
-      }
+      // Boot
+      init();
     </script>
   </body>
 </html>
