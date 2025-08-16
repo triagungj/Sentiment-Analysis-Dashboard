@@ -11,6 +11,10 @@ __pycache__/
 venv/
 ENV/
 env/
+# Environment variables
+.env
+.env.*
+!.env.example  # Keep an example file for reference
 
 # Django
 *.log

@@ -21,30 +21,10 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-=jwn3lujsc&7$ki@$xro88%q_%v#kchbu)bfso7ce0g%z=$i2q'
+SECRET_KEY = os.environ.get('SECRET_KEY')
+DEBUG = os.environ.get('DEBUG', 'True') == 'True'
 
-# SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = False
-
-# Tell Django how to detect HTTPS when behind a proxy
-SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
-
-# If you generate absolute URLs, also respect the forwarded host
-USE_X_FORWARDED_HOST = True
-
-# Redirect all HTTP to HTTPS (once TLS & proxy are correct)
-SECURE_SSL_REDIRECT = True
-
-# Secure cookies over HTTPS
-SESSION_COOKIE_SECURE = True
-CSRF_COOKIE_SECURE = True
-
-CSRF_TRUSTED_ORIGINS = [
-    "https://sentiment.triagungj.com",
-    # add more if needed
-]
-
-ALLOWED_HOSTS = ['sentiment.triagungj.com', '82.112.236.197', 'localhost', '127.0.0.1']
+ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', 'localhost, 127.0.0.1').split(', ')
 
 
 # Application definition
