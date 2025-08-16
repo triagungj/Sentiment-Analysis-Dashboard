@@ -299,11 +299,9 @@
     <div class="header-bar">
       <h2>Stock News Sentiment Analysis - CNBC Indonesia</h2>
       <div class="header-actions">
-        <button id="refreshRssBtn" class="btn-primary">
-          ↻ Refresh from RSS
-        </button>
+        <button id="refreshRssBtn" class="btn-primary">↻ Refetch News</button>
         <button id="openPredictDialogBtn" class="btn-secondary">
-          Open Sentiment Predictor
+          Try Predict News Sentiment >
         </button>
       </div>
     </div>
@@ -369,7 +367,6 @@
       // --------------------------
       const API_SENTIMENT_STATS = "/api/dashboard/sentiment-stats/";
       const API_NEWS_BASE = "/api/news/";
-      const API_NEWS_REFRESH = "/api/news/refresh-rss/";
       const API_PREDICT = "/api/predict/";
 
       // --------------------------
@@ -510,7 +507,7 @@
                 backgroundColor: "rgba(0,114,178,0.2)",
                 fill: false,
                 tension: 0.3,
-                pointRadius: 2,
+                pointRadius: 4,
               },
               {
                 label: "Neutral",
@@ -519,7 +516,7 @@
                 backgroundColor: "rgba(230,159,0,0.2)",
                 fill: false,
                 tension: 0.3,
-                pointRadius: 2,
+                pointRadius: 4,
               },
               {
                 label: "Negative",
@@ -528,7 +525,7 @@
                 backgroundColor: "rgba(0,158,115,0.2)",
                 fill: false,
                 tension: 0.3,
-                pointRadius: 2,
+                pointRadius: 4,
               },
             ],
           },
@@ -584,6 +581,21 @@
                   font: { size: 14 },
                 },
               },
+            },
+            onClick: async (evt, elements) => {
+              if (elements.length > 0) {
+                const index = elements[0].index;
+                const clickedDate = labels[index]; // Format: YYYY-MM-DD
+                console.log("Clicked date:", clickedDate);
+
+                // Change the news title
+                document.getElementById(
+                  "newsTitle"
+                ).textContent = `News — ${clickedDate}`;
+
+                // Fetch only news for that date
+                await fetchNewsByExactDate(clickedDate);
+              }
             },
           },
         });
@@ -687,6 +699,11 @@
         if (inFlight) inFlight.abort();
         inFlight = new AbortController();
         return inFlight.signal;
+      }
+
+      async function fetchNewsByExactDate(date) {
+        const base = `${API_NEWS_BASE}?start=${date}&end=${date}`;
+        await fetchPaged(base, false);
       }
 
       async function fetchPaged(url, append = false) {
@@ -968,51 +985,18 @@
       const refreshBtn = document.getElementById("refreshRssBtn");
       function setRefreshing(isLoading) {
         refreshBtn.disabled = isLoading;
-        refreshBtn.textContent = isLoading
-          ? "Refreshing..."
-          : "↻ Refresh from RSS";
+        refreshBtn.textContent = isLoading ? "Refetching..." : "↻ Refetch News";
       }
-      function showToast(msg) {
-        let el = document.getElementById("appToast");
-        if (!el) {
-          el = document.createElement("div");
-          el.id = "appToast";
-          el.className = "toast";
-          document.body.appendChild(el);
-        }
-        el.textContent = msg;
-        el.style.display = "block";
-        setTimeout(() => {
-          el.style.display = "none";
-        }, 3000);
-      }
-      async function refreshFromRss(limit = 50) {
+      refreshBtn.addEventListener("click", async () => {
         setRefreshing(true);
         try {
-          const resp = await fetch(API_NEWS_REFRESH, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "X-CSRFToken": getCookie("csrftoken") || "",
-            },
-            body: JSON.stringify({ limit }),
-          });
-          if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-          const data = await resp.json();
-          showToast(
-            `Synced ✓  New: ${data.created ?? data.inserted ?? 0}, Updated: ${
-              data.updated ?? data.skipped ?? 0
-            }`
-          );
           await reloadChartData();
         } catch (err) {
           console.error(err);
-          showToast("Refresh failed. Check logs.");
         } finally {
           setRefreshing(false);
         }
-      }
-      refreshBtn.addEventListener("click", () => refreshFromRss(50));
+      });
 
       // --------------------------
       // Load more button
