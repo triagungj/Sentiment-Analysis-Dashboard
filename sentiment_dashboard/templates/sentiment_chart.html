@@ -643,6 +643,7 @@
           const date = n.published_at || n.created_at || n.date || "";
           const source = n.source?.name || n.source || "";
           const sentiment = n.sentiment || n.sentiment_label || "";
+          const confidence = n.sentiment_score || n.sentiment_score || "";
           const imgSrc = n.image_link || n.image_url || PLACEHOLDER_SVG;
 
           const sKey = (sentiment || "").toLowerCase();
@@ -679,6 +680,14 @@
                     ? ` <span class="badge ${sentimentClass}">${sentiment}</span>`
                     : ""
                 }
+                ${
+                  confidence
+                    ? ` <span class="badge sentiment-confidence">Confidence: ${confidence.toFixed(
+                        4
+                      )}</span>`
+                    : ""
+                }
+
               </div>
             </div>
           `;
