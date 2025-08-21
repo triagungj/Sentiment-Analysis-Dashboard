@@ -113,8 +113,8 @@ source venv/bin/activate
 # Windows
 venv\Scripts\activate
 
-# Instal dependencies (pakai nama file yang sesuai, mis. requirements.txt)
-pip install -r requirements.txt
+# Instal dependencies (pakai nama file yang sesuai, mis. requirement.txt)
+pip install -r requirement.txt
 # jika repositori menggunakan requirement.txt:
 # pip install -r requirement.txt
 ```
@@ -194,7 +194,7 @@ psql -U sentiment_user -d sentiment_db -f backup.sql
 ├── Dockerfile
 ├── .env.example            # Contoh env (opsional)
 ├── manage.py
-├── requirements.txt / requirement.txt
+├── requirement.txt / requirement.txt
 └── README.md
 ```
 

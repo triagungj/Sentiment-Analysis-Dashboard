@@ -114,7 +114,7 @@ source venv/bin/activate
 venv\Scripts\activate
 
 # Install dependencies (use the file in your repo)
-pip install -r requirements.txt
+pip install -r requirement.txt
 # if your repo uses requirement.txt:
 # pip install -r requirement.txt
 ```
@@ -194,7 +194,7 @@ psql -U sentiment_user -d sentiment_db -f backup.sql
 ├── Dockerfile
 ├── .env.example            # Example env (optional)
 ├── manage.py
-├── requirements.txt / requirement.txt
+├── requirement.txt / requirement.txt
 └── README.md
 ```
 
