@@ -51,7 +51,7 @@ venv\Scripts\activate      # on Windows
 ### 3. Install Dependencies
 
 ```bash
-pip install -r requirements.txt
+pip install -r requirement.txt
 ```
 
 ### 4. Apply Migrations
