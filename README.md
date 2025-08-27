@@ -1,3 +1,5 @@
+[![HKI Registered](https://img.shields.io/badge/HKI-Registered-brightgreen)](https://hakcipta.dgip.go.id/legal/c/NzBiNjg1Mzg2MTk4MDRhNWYzZTE3YWM0Njc3MDNhNDA=)
+
 # Sentiment Analysis Dashboard
 
 A **Django** dashboard for sentiment analysis of stock/financial news.  
@@ -8,9 +10,10 @@ It provides a web UI for visualization and REST endpoints for programmatic predi
 ## 0) Environment Preparation (Env & Prerequisites)
 
 **Prerequisites**
+
 - Git
-- Python ≥ 3.10 (only required if running *without* Docker)
-- PostgreSQL ≥ 14 (only required if running *without* Docker)
+- Python ≥ 3.10 (only required if running _without_ Docker)
+- PostgreSQL ≥ 14 (only required if running _without_ Docker)
 - Docker Desktop / Docker Engine + Docker Compose (optional, if you choose the Docker path)
 
 **Clone the repository**
@@ -48,7 +51,8 @@ POSTGRES_PORT=5432
 
 ## Option 1 — Run with Docker (Recommended)
 
-1) **Start services**
+1. **Start services**
+
 ```bash
 # Compose v2 (recommended)
 docker compose up --build -d
@@ -57,16 +61,19 @@ docker compose up --build -d
 # docker-compose up --build -d
 ```
 
-2) **Apply migrations & create a superuser (inside the container)**
+2. **Apply migrations & create a superuser (inside the container)**
+
 ```bash
 docker compose run --rm web python manage.py migrate
 docker compose run --rm web python manage.py createsuperuser
 ```
 
-3) **Open the app**
+3. **Open the app**
+
 - Dashboard: http://localhost:8000
 
-4) **Common Docker commands**
+4. **Common Docker commands**
+
 ```bash
 # Check status & view logs
 docker compose ps
@@ -84,8 +91,9 @@ docker compose down -v
 
 ## Option 2 — Run Locally (Without Docker)
 
-1) **Install PostgreSQL** (ensure `psql` is available).  
+1. **Install PostgreSQL** (ensure `psql` is available).  
    Create a **database** and **user**:
+
 ```sql
 -- Log in as a superuser (e.g., postgres) then run:
 CREATE DATABASE sentiment_db;
@@ -96,7 +104,8 @@ ALTER ROLE sentiment_user SET timezone TO 'UTC';
 GRANT ALL PRIVILEGES ON DATABASE sentiment_db TO sentiment_user;
 ```
 
-2) **Update `.env` for local connection**
+2. **Update `.env` for local connection**
+
 ```env
 POSTGRES_DB=sentiment_db
 POSTGRES_USER=sentiment_user
@@ -105,7 +114,8 @@ POSTGRES_HOST=127.0.0.1
 POSTGRES_PORT=5432
 ```
 
-3) **Create a virtualenv & install Python dependencies**
+3. **Create a virtualenv & install Python dependencies**
+
 ```bash
 python -m venv venv
 # Linux/Mac
@@ -119,12 +129,14 @@ pip install -r requirement.txt
 # pip install -r requirement.txt
 ```
 
-4) **Migrate & run the development server**
+4. **Migrate & run the development server**
+
 ```bash
 python manage.py migrate
 python manage.py createsuperuser
 python manage.py runserver
 ```
+
 Open: http://127.0.0.1:8000
 
 ---
@@ -147,6 +159,7 @@ python manage.py collectstatic
 ## Database Backup & Restore
 
 **With Docker**
+
 ```bash
 # Backup
 docker exec -t $(docker ps -qf "name=_db") pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB" > backup.sql
@@ -156,6 +169,7 @@ cat backup.sql | docker exec -i $(docker ps -qf "name=_db") psql -U "$POSTGRES_U
 ```
 
 **Without Docker (local)**
+
 ```bash
 # Backup
 pg_dump -U sentiment_user -d sentiment_db > backup.sql
@@ -200,5 +214,10 @@ psql -U sentiment_user -d sentiment_db -f backup.sql
 
 ---
 
-## License
-Choose a license (e.g., MIT) and add a `LICENSE` file if needed.
+## Intellectual Property (HKI)
+
+This project is associated with an Indonesian Copyright (Hak Cipta) registration under the Directorate General of Intellectual Property (DJKI), Republic of Indonesia.
+
+- **Verification (official link):** [View on DJKI e-Hakcipta](https://hakcipta.dgip.go.id/legal/c/NzBiNjg1Mzg2MTk4MDRhNWYzZTE3YWM0Njc3MDNhNDA=)
+- **Scope:** Source code and accompanying documentation/artifacts contained in this repository.
+- **Notice:** Redistribution or derivative use must comply with the project’s LICENSE and Indonesian copyright law.
